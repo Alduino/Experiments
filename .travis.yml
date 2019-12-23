@@ -3,4 +3,5 @@ node_js:
   - 12
 script: "npm run build"
 after_success:
+  - echo "Uploading to FTP as ${SFTP_USER}"
   - find . -type d \( -path "./dist/.*" \) -prune -o -name "*" -print -exec curl --ftp-create-dirs -T {} ftp://ftp.fastmail.com/me/alduino.dev/files/subdomain/experiments --user ${SFTP_USER}:${STFP_PASSWORD} \;
