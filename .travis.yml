@@ -2,9 +2,5 @@ language: "node_js"
 node_js:
   - 12
 script: "npm run build"
-addons:
-  apt:
-    packages:
-      - libstdc++6
 after_success:
   - find . -type d \( -path "./dist/.*" \) -prune -o -name "*" -print -exec curl --ftp-create-dirs -T {} ftp://fastmail.com/me/alduino.dev/files/subdomain/experiments --user ${SFTP_USER}:${STFP_PASSWORD} \;
