@@ -1,0 +1,15 @@
+{
+  "name": "@alduino/experiments",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "parcel src/index.html",
+    "build": "parcel build src/index.html"
+  },
+  "dependencies": {
+
+  },
+  "devDependencies": {
+    "parcel": "next"
+  }
+}
