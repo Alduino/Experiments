@@ -132,7 +132,16 @@ class CanvasFrameContextFactory {
         this._mousePos = mousePagePos.subtract(offset);
     }
 
-    private preFrame() {
+    constructor(canv: HTMLCanvasElement) {
+        this._canv = canv;
+        this._ctx = canv.getContext("2d");
+
+        canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
+        canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
+        canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
+    }
+
+    preFrame() {
         if (this._currentFrameTime === -1) {
             this._currentFrameTime = this._previousFrameTime = performance.now();
         } else {
@@ -141,18 +150,9 @@ class CanvasFrameContextFactory {
         }
     }
 
-    private postFrame() {
+    postFrame() {
         this._previousMousePos = this._mousePos;
         this._previousMouseState = this._mouseState;
-    }
-
-    constructor(canv: HTMLCanvasElement) {
-        this._canv = canv;
-        this._ctx = canv.getContext("2d");
-
-        canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
-        canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
-        canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
     }
 
     createContext(): CanvasFrameContext {
