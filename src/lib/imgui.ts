@@ -10,9 +10,9 @@ export interface OutlineOptions {
     thickness: number;
 }
 
-type PrimitiveOptions = FillOptions | OutlineOptions;
+type RenderOptions = FillOptions | OutlineOptions;
 
-function isFillOptions(options: PrimitiveOptions): options is FillOptions {
+function isFillOptions(options: RenderOptions): options is FillOptions {
     return typeof (options as FillOptions).fill !== "undefined";
 }
 
@@ -29,7 +29,7 @@ function drawPath(ctx: CanvasFrameContext, opts: FillOptions | OutlineOptions) {
 
 ///--- PRIMITIVE SHAPES ---\\\
 
-export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: PrimitiveOptions) {
+export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: RenderOptions) {
     ctx.renderer.rect(a.x, a.y, b.x, b.y);
     drawPath(ctx, opts);
 }
@@ -38,4 +38,13 @@ export function clear(ctx: CanvasFrameContext, a: Vector2 = new Vector2(), b: Ve
     ctx.renderer.clearRect(a.x, a.y, b.x, b.y);
 }
 
+export function arc(ctx: CanvasFrameContext, centre: Vector2, radius: number, startAngle: number, endAngle: number, counterClockwise: boolean, opts: RenderOptions) {
+    ctx.renderer.arc(centre.x, centre.y, radius, startAngle, endAngle, counterClockwise);
+    drawPath(ctx, opts);
+}
+
 ///--- COMPOSITE SHAPES ---\\\
+
+export function circle(ctx: CanvasFrameContext, centre: Vector2, radius: number, opts: RenderOptions) {
+    arc(ctx, centre, radius, 0, Math.PI * 2, false, opts);
+}
