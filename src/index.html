@@ -6,7 +6,38 @@
     <link href="css/style.scss" rel="stylesheet" />
 </head>
 <body>
-<iframe src="blank.html" class="frame"></iframe>
-<aside class="list"></aside>
+<iframe src="blank.html" name="target" class="frame"></iframe>
+<aside class="list">
+    <a href="/bezier.html" target="target">Bezier</a>
+</aside>
+
+<script>
+    const $frame = document.querySelector(".frame");
+    const $title = document.querySelector("title");
+
+    // make the links also go into the url
+    for (const $el of Array.from(document.querySelectorAll("a"))) {
+        if (!$el.href) continue;
+        if ($el.target !== "target") continue;
+
+        $el.addEventListener("click", e => {
+            location.hash = $el.getAttribute("href");
+            e.preventDefault();
+        });
+    }
+
+    onhashchange = () => {
+        const hash = location.hash.substr(1);
+        const target = hash && document.querySelector(`a[href="${hash}"]`);
+        if (target) {
+            $frame.contentWindow.location.replace(hash);
+            $title.textContent = `${target.textContent} | Experiments`;
+        } else {
+            $title.textContent = "Experiments";
+            $frame.contentWindow.location.replace("/blank.html");
+        }
+    };
+    onhashchange();
+</script>
 </body>
 </html>
