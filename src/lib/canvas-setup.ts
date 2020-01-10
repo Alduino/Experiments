@@ -36,6 +36,8 @@ export interface CanvasFrameContext {
     renderer: CanvasRenderingContext2D;
     deltaTime: number;
 
+    screenSize: Vector2;
+
     mouseDown: MouseState;
     mousePressed: MouseState;
     mouseReleased: MouseState;
@@ -124,6 +126,8 @@ class CanvasFrameContextFactory {
         return {
             renderer: this._ctx,
             deltaTime: (this._currentFrameTime - this._previousFrameTime) * 1000,
+
+            screenSize: new Vector2(this._canv.width, this._canv.height),
 
             mouseDown: this._mouseState,
             mousePressed: CanvasFrameContextFactory.risingEdge(this._mouseState, this._previousMouseState),
