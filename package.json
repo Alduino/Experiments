@@ -6,9 +6,6 @@
     "start": "parcel src/*.html",
     "build": "parcel build src/*.html"
   },
-  "dependencies": {
-    "ts-vector-math": "^1.6.0"
-  },
   "devDependencies": {
     "parcel": "^1.12.4",
     "sass": "^1.24.0",
