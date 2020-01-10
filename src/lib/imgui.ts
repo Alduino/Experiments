@@ -30,6 +30,7 @@ function drawPath(ctx: CanvasFrameContext, opts: FillOptions | OutlineOptions) {
 ///--- PRIMITIVE SHAPES ---\\\
 
 export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: RenderOptions) {
+    ctx.renderer.beginPath();
     ctx.renderer.rect(a.x, a.y, b.x, b.y);
     drawPath(ctx, opts);
 }
@@ -39,6 +40,7 @@ export function clear(ctx: CanvasFrameContext, a: Vector2 = new Vector2(), b: Ve
 }
 
 export function arc(ctx: CanvasFrameContext, centre: Vector2, radius: number, startAngle: number, endAngle: number, counterClockwise: boolean, opts: RenderOptions) {
+    ctx.renderer.beginPath();
     ctx.renderer.arc(centre.x, centre.y, radius, startAngle, endAngle, counterClockwise);
     drawPath(ctx, opts);
 }
