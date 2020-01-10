@@ -16,7 +16,7 @@ class MouseState {
     }
 
     valueOf() {
-        return this.left;
+        return this.left || this.mid || this.right;
     }
 
     withLeft(state: boolean) {
