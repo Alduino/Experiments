@@ -10,6 +10,11 @@ export interface OutlineOptions {
     thickness: number;
 }
 
+export interface TextOptions {
+    font: string;
+    align: CanvasTextAlign;
+}
+
 type RenderOptions = FillOptions | OutlineOptions;
 
 function isFillOptions(options: RenderOptions): options is FillOptions {
@@ -43,6 +48,20 @@ export function arc(ctx: CanvasFrameContext, centre: Vector2, radius: number, st
     ctx.renderer.beginPath();
     ctx.renderer.arc(centre.x, centre.y, radius, startAngle, endAngle, counterClockwise);
     drawPath(ctx, opts);
+}
+
+export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: RenderOptions & TextOptions) {
+    ctx.renderer.font = opts.font;
+    ctx.renderer.textAlign = opts.align;
+
+    if (isFillOptions(opts)) {
+        ctx.renderer.fillStyle = opts.fill;
+        ctx.renderer.fillText(text, pos.x, pos.y);
+    } else {
+        ctx.renderer.strokeStyle = opts.colour;
+        ctx.renderer.lineWidth = opts.thickness;
+        ctx.renderer.strokeText(text, pos.x, pos.y);
+    }
 }
 
 ///--- COMPOSITE SHAPES ---\\\
