@@ -33,16 +33,49 @@ class MouseState {
 }
 
 export interface CanvasFrameContext {
+    /**
+     * The low-level rendering class
+     */
     renderer: CanvasRenderingContext2D;
+
+    /**
+     * The amount of seconds since the last frame
+     */
     deltaTime: number;
 
+    /**
+     * The size in pixels of the canvas
+     */
     screenSize: Vector2;
 
+    /**
+     * `.left`, `.mid`, `.right` each set with either `true` or `false` depending on if that mouse button has been
+     * pressed down.
+     *
+     * To check if any mouse button is down, add a `+` before the reference (e.g. `+ctx.mouseDown`)
+     */
     mouseDown: MouseState;
+
+    /**
+     * Same as `.mouseDown`, except the values are only set to `true` on the first frame that the button has been
+     * pressed. (Rising edge)
+     */
     mousePressed: MouseState;
+
+    /**
+     * Same as `.mouseDown`, except that the values are only set to `true` on the first frame that the button has been
+     * released. (Falling edge)
+     */
     mouseReleased: MouseState;
 
+    /**
+     * The current position of the mouse
+     */
     mousePos: Vector2;
+
+    /**
+     * Set to `true` in any frame where the mouse has moved since the last frame.
+     */
     mouseMoved: boolean;
 }
 
