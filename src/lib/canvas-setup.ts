@@ -32,7 +32,7 @@ class MouseState {
     }
 }
 
-interface CanvasFrameContext {
+export interface CanvasFrameContext {
     renderer: CanvasRenderingContext2D;
     deltaTime: number;
 
