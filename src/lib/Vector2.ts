@@ -94,4 +94,8 @@ export default class Vector2 {
 
         return rad * sign;
     }
+
+    toString() {
+        return `[${this.x}, ${this.y}]`;
+    }
 }
