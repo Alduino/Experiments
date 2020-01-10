@@ -1,3 +1,5 @@
+import Vector2 from "./Vector2";
+
 type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
 
 interface CanvasFrameContext {
@@ -21,21 +23,38 @@ class CanvasFrameContextFactory {
         right: false
     };
 
-    private _mousePos: Mouse<>
+    private _mousePos: Vector2 = new Vector2();
+
+    private readonly _canv: HTMLCanvasElement;
+    private readonly _ctx: CanvasRenderingContext2D;
 
     private handleMouseDown(ev: MouseEvent) {
-
+        switch (ev.button) {
+            case 0: this._mouseState.left = true; break;
+            case 1: this._mouseState.mid = true; break;
+            case 2: this._mouseState.right = true; break;
+        }
     }
 
     private handleMouseUp(ev: MouseEvent) {
-
+        switch (ev.button) {
+            case 0: this._mouseState.left = false; break;
+            case 1: this._mouseState.mid = false; break;
+            case 2: this._mouseState.right = false; break;
+        }
     }
 
     private handleMouseMove(ev: MouseEvent) {
-
+        const canvasOffset = this._canv.getBoundingClientRect();
+        const mousePagePos = new Vector2(ev.pageX, ev.pageY);
+        const offset = new Vector2(canvasOffset.left, canvasOffset.top);
+        this._mousePos = mousePagePos.subtract(offset);
     }
 
     constructor(canv: HTMLCanvasElement) {
+        this._canv = canv;
+        this._ctx = canv.getContext("2d");
+
         canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
         canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
         canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
@@ -51,13 +70,15 @@ class CanvasFrameContextFactory {
     }
 
     createContext(): CanvasFrameContext {
-
+        return {
+            renderer: this._ctx,
+            deltaTime: (this._currentFrameTime - this._previousFrameTime) * 1000
+        }
     }
 }
 
 export default class Canvas {
     private readonly _canv: HTMLCanvasElement;
-    private readonly _ctx: CanvasRenderingContext2D;
 
     private _running: boolean;
     private _contextFactory: CanvasFrameContextFactory;
@@ -69,11 +90,21 @@ export default class Canvas {
         frame(this._contextFactory.createContext());
     }
 
+    private handleResize() {
+        const parent = this._canv.parentElement;
+        if (!parent) return;
+
+        const parentRect = parent.getBoundingClientRect();
+        this._canv.width = parentRect.width;
+        this._canv.height = parentRect.height;
+    }
+
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
-        this._ctx = this._canv.getContext("2d");
-
         this._contextFactory = new CanvasFrameContextFactory(this._canv);
+
+        window.onresize = this.handleResize.bind(this);
+        this.handleResize();
     }
 
     public start(frame: CanvasFrameRenderer) {
