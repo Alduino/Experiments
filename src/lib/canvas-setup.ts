@@ -1,46 +1,92 @@
 import Vector2 from "./Vector2";
 
+
+
 type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
+
+class MouseState {
+    readonly left: boolean;
+    readonly mid: boolean;
+    readonly right: boolean;
+
+    constructor(left: boolean, mid: boolean, right: boolean) {
+        this.left = left;
+        this.mid = mid;
+        this.right = right;
+    }
+
+    valueOf() {
+        return this.left;
+    }
+
+    withLeft(state: boolean) {
+        return new MouseState(state, this.mid, this.right);
+    }
+
+    withMid(state: boolean) {
+        return new MouseState(this.left, state, this.right);
+    }
+
+    withRight(state: boolean) {
+        return new MouseState(this.left, this.mid, state);
+    }
+}
 
 interface CanvasFrameContext {
     renderer: CanvasRenderingContext2D;
     deltaTime: number;
-}
 
-interface Mouse<T> {
-    left: T;
-    mid: T;
-    right: T;
+    mouseDown: MouseState;
+    mousePressed: MouseState;
+    mouseReleased: MouseState;
+
+    mousePos: Vector2;
+    mouseMoved: boolean;
 }
 
 class CanvasFrameContextFactory {
+    private static risingEdge(curr: MouseState, prev: MouseState): MouseState {
+        return new MouseState(
+            curr.left && !prev.left,
+            curr.mid && !prev.mid,
+            curr.right && !prev.right
+        );
+    }
+
+    private static fallingEdge(curr: MouseState, prev: MouseState): MouseState {
+        return new MouseState(
+            !curr.left && prev.left,
+            !curr.mid && prev.mid,
+            !curr.right && prev.right
+        );
+    }
+
     private _previousFrameTime: number = -1;
     private _currentFrameTime: number = -1;
 
-    private _mouseState: Mouse<boolean> = {
-        left: false,
-        mid: false,
-        right: false
-    };
+    private _mouseState: MouseState = new MouseState(false, false, false);
+
+    private _previousMouseState: MouseState = this._mouseState;
 
     private _mousePos: Vector2 = new Vector2();
+    private _previousMousePos: Vector2 = this._mousePos;
 
     private readonly _canv: HTMLCanvasElement;
     private readonly _ctx: CanvasRenderingContext2D;
 
     private handleMouseDown(ev: MouseEvent) {
         switch (ev.button) {
-            case 0: this._mouseState.left = true; break;
-            case 1: this._mouseState.mid = true; break;
-            case 2: this._mouseState.right = true; break;
+            case 0: this._mouseState = this._mouseState.withLeft(true); break;
+            case 1: this._mouseState = this._mouseState.withMid(true); break;
+            case 2: this._mouseState = this._mouseState.withRight(true); break;
         }
     }
 
     private handleMouseUp(ev: MouseEvent) {
         switch (ev.button) {
-            case 0: this._mouseState.left = false; break;
-            case 1: this._mouseState.mid = false; break;
-            case 2: this._mouseState.right = false; break;
+            case 0: this._mouseState = this._mouseState.withLeft(false); break;
+            case 1: this._mouseState = this._mouseState.withMid(false); break;
+            case 2: this._mouseState = this._mouseState.withRight(false); break;
         }
     }
 
@@ -60,7 +106,7 @@ class CanvasFrameContextFactory {
         canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
     }
 
-    triggerFrame() {
+    preFrame() {
         if (this._currentFrameTime === -1) {
             this._currentFrameTime = this._previousFrameTime = performance.now();
         } else {
@@ -69,11 +115,23 @@ class CanvasFrameContextFactory {
         }
     }
 
+    postFrame() {
+        this._previousMousePos = this._mousePos;
+        this._previousMouseState = this._mouseState;
+    }
+
     createContext(): CanvasFrameContext {
         return {
             renderer: this._ctx,
-            deltaTime: (this._currentFrameTime - this._previousFrameTime) * 1000
-        }
+            deltaTime: (this._currentFrameTime - this._previousFrameTime) * 1000,
+
+            mouseDown: this._mouseState,
+            mousePressed: CanvasFrameContextFactory.risingEdge(this._mouseState, this._previousMouseState),
+            mouseReleased: CanvasFrameContextFactory.fallingEdge(this._mouseState, this._previousMouseState),
+
+            mousePos: this._mousePos,
+            mouseMoved: !this._mousePos.equal(this._previousMousePos)
+        };
     }
 }
 
@@ -86,8 +144,9 @@ export default class Canvas {
     private handleFrame(frame: CanvasFrameRenderer) {
         if (this._running) requestAnimationFrame(this.handleFrame.bind(this, frame));
 
-        this._contextFactory.triggerFrame();
+        this._contextFactory.preFrame();
         frame(this._contextFactory.createContext());
+        this._contextFactory.postFrame();
     }
 
     private handleResize() {
