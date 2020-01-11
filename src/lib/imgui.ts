@@ -15,6 +15,13 @@ export interface TextOptions {
     align: CanvasTextAlign;
 }
 
+interface BasicBezierOptions {
+    start: Vector2;
+    end: Vector2;
+}
+
+export type BezierOptions<T> = BasicBezierOptions & {[opt in keyof T]: Vector2}
+
 type RenderOptions = FillOptions | OutlineOptions;
 
 function isFillOptions(options: RenderOptions): options is FillOptions {
@@ -62,6 +69,19 @@ export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: 
         ctx.renderer.lineWidth = opts.thickness;
         ctx.renderer.strokeText(text, pos.x, pos.y);
     }
+}
+
+export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{control}>) {
+    ctx.renderer.beginPath();
+    ctx.renderer.moveTo(opts.start.x, opts.start.y);
+    ctx.renderer.quadraticCurveTo(opts.control.x, opts.control.y, opts.end.x, opts.end.y);
+}
+
+export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{controlA, controlB}>) {
+    ctx.renderer.beginPath();
+    ctx.renderer.moveTo(opts.start.x, opts.start.y);
+    ctx.renderer.bezierCurveTo(opts.controlA.x, opts.controlA.y, opts.controlB.x, opts.controlB.y, opts.end.x, opts.end.y);
+    drawPath(ctx, opts);
 }
 
 ///--- COMPOSITE SHAPES ---\\\
