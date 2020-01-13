@@ -161,7 +161,7 @@ class CanvasFrameContextFactory {
     createContext(): CanvasFrameContext {
         return {
             renderer: this._ctx,
-            deltaTime: (this._currentFrameTime - this._previousFrameTime) * 1000,
+            deltaTime: (this._currentFrameTime - this._previousFrameTime) / 1000,
 
             screenSize: new Vector2(this._canv.width, this._canv.height),
 
