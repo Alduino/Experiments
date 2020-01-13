@@ -42,6 +42,11 @@ export interface CanvasFrameContext {
     deltaTime: number;
 
     /**
+     * The current FPS with no smoothing
+     */
+    fps: number;
+
+    /**
      * The size in pixels of the canvas
      */
     screenSize: Vector2;
@@ -159,9 +164,13 @@ class CanvasFrameContextFactory {
     }
 
     createContext(): CanvasFrameContext {
+        const deltaTime = (this._currentFrameTime - this._previousFrameTime) / 1000;
+
         return {
             renderer: this._ctx,
-            deltaTime: (this._currentFrameTime - this._previousFrameTime) / 1000,
+
+            deltaTime: deltaTime,
+            fps: 1 / deltaTime,
 
             screenSize: new Vector2(this._canv.width, this._canv.height),
 
