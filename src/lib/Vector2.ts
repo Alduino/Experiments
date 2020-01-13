@@ -6,6 +6,10 @@ export default class Vector2 {
         return a.x === b.x && a.y === b.y;
     }
 
+    static from(obj: {x: number, y: number}) {
+        return new Vector2(obj.x, obj.y);
+    }
+
     public readonly x: number;
     public readonly y: number;
 
