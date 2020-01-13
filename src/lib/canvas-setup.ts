@@ -1,7 +1,5 @@
 import Vector2 from "./Vector2";
 
-
-
 type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
 
 class MouseState {
@@ -77,6 +75,11 @@ export interface CanvasFrameContext {
      * Set to `true` in any frame where the mouse has moved since the last frame.
      */
     mouseMoved: boolean;
+
+    /**
+     * An array of functions that will be called with no parameters when the object is disposed
+     */
+    disposeListeners: Function[];
 }
 
 class CanvasFrameContextFactory {
@@ -167,7 +170,9 @@ class CanvasFrameContextFactory {
             mouseReleased: CanvasFrameContextFactory.fallingEdge(this._mouseState, this._previousMouseState),
 
             mousePos: this._mousePos,
-            mouseMoved: !this._mousePos.equal(this._previousMousePos)
+            mouseMoved: !this._mousePos.equal(this._previousMousePos),
+
+            disposeListeners: []
         };
     }
 }
@@ -182,7 +187,11 @@ export default class Canvas {
         if (this._running) requestAnimationFrame(this.handleFrame.bind(this, frame));
 
         this._contextFactory.preFrame();
-        frame(this._contextFactory.createContext());
+
+        const ctx = this._contextFactory.createContext();
+        frame(ctx);
+        ctx.disposeListeners.forEach(listener => listener());
+
         this._contextFactory.postFrame();
     }
 
