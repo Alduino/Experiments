@@ -8,7 +8,7 @@
 <body>
 <iframe src="blank.html" name="target" class="frame"></iframe>
 <aside class="list">
-    <a href="/road.html" target="target">Road</a>
+    <a href="/road.html" target="target" data-description="W.I.P road placement system. Will be implemented in Cities: United game when complete">Road</a>
 </aside>
 
 <script>
@@ -27,11 +27,16 @@
     }
 
     onhashchange = () => {
+        for (const el of document.querySelectorAll("a[data-description]")) {
+            el.classList.remove("description-visible");
+        }
+
         const hash = location.hash.substr(1);
         const target = hash && document.querySelector(`a[href="${hash}"]`);
         if (target) {
             $frame.contentWindow.location.replace(hash);
             $title.textContent = `${target.textContent} | Experiments`;
+            target.classList.add("description-visible");
         } else {
             $title.textContent = "Experiments";
             $frame.contentWindow.location.replace("/blank.html");
