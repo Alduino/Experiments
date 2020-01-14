@@ -30,6 +30,22 @@ class MouseState {
     }
 }
 
+export enum RenderTrigger {
+    Always = 0,
+
+    Resized = 1 << 0,
+
+    MousePressed = 1 << 1,
+    MouseReleased = 1 << 2,
+    MouseMoved = 1 << 3,
+
+    KeyPressed = 1 << 4,
+    KeyReleased = 1 << 5,
+
+    MouseChanged = RenderTrigger.MousePressed | RenderTrigger.MouseReleased | RenderTrigger.MouseMoved,
+    KeyChanged = RenderTrigger.KeyPressed | RenderTrigger.KeyReleased
+}
+
 export interface CanvasFrameContext {
     /**
      * The low-level rendering class
@@ -189,8 +205,10 @@ class CanvasFrameContextFactory {
 export default class Canvas {
     private readonly _canv: HTMLCanvasElement;
 
-    private _running: boolean;
+    private _running: boolean = false;
+    private _trigger: RenderTrigger = RenderTrigger.Always;
     private _contextFactory: CanvasFrameContextFactory;
+    private _callback: CanvasFrameRenderer | null = null;
 
     private handleFrame(frame: CanvasFrameRenderer) {
         if (this._running) requestAnimationFrame(this.handleFrame.bind(this, frame));
@@ -213,20 +231,38 @@ export default class Canvas {
         this._canv.height = parentRect.height;
     }
 
+    private handleTrigger(cause: RenderTrigger) {
+        if (this._trigger & cause) this.handleFrame(this._callback);
+    }
+
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
         this._contextFactory = new CanvasFrameContextFactory(this._canv);
 
-        window.onresize = this.handleResize.bind(this);
+        window.addEventListener("resize", this.handleResize.bind(this));
         this.handleResize();
+
+        this._canv.addEventListener("mousedown", this.handleTrigger.bind(this, RenderTrigger.MousePressed));
+        this._canv.addEventListener("mouseup", this.handleTrigger.bind(this, RenderTrigger.MouseReleased));
+        this._canv.addEventListener("mousemove", this.handleTrigger.bind(this, RenderTrigger.MouseMoved));
+        this._canv.addEventListener("keydown", this.handleTrigger.bind(this, RenderTrigger.KeyPressed));
+        this._canv.addEventListener("keyup", this.handleTrigger.bind(this, RenderTrigger.KeyReleased));
     }
 
-    public start(frame: CanvasFrameRenderer) {
-        this._running = true;
-        requestAnimationFrame(this.handleFrame.bind(this, frame));
+    public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
+        this._trigger = renderTrigger;
+
+        if (this._trigger === RenderTrigger.Always) {
+            this._running = true;
+            requestAnimationFrame(this.handleFrame.bind(this, frame));
+        } else {
+            this._callback = frame;
+        }
     }
 
     public stop() {
         this._running = false;
+        this._trigger = RenderTrigger.Always;
+        this._callback = null;
     }
 }
