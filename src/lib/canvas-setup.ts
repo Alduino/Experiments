@@ -156,6 +156,10 @@ class CanvasFrameContextFactory {
         this._mousePos = mousePagePos.subtract(offset);
     }
 
+    public get ctx() {
+        return this._ctx;
+    }
+
     constructor(canv: HTMLCanvasElement) {
         this._canv = canv;
         this._ctx = canv.getContext("2d");
@@ -209,6 +213,10 @@ export default class Canvas {
     private _trigger: RenderTrigger = RenderTrigger.Always;
     private _contextFactory: CanvasFrameContextFactory;
     private _callback: CanvasFrameRenderer | null = null;
+
+    public get ctx() {
+        return this._contextFactory.ctx;
+    }
 
     private handleFrame(frame: CanvasFrameRenderer) {
         if (this._running) requestAnimationFrame(this.handleFrame.bind(this, frame));
