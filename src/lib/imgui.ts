@@ -1,5 +1,5 @@
 import Vector2 from "./Vector2";
-import {CanvasFrameContext} from "./canvas-setup";
+import Canvas, {CanvasFrameContext} from "./canvas-setup";
 
 export interface FillOptions {
     fill: string;
@@ -157,6 +157,10 @@ export function line(ctx: CanvasFrameContext, opts: RenderOptions & BasicBezierO
 export function moveTo(ctx: CanvasFrameContext, pos: Vector2) {
     assertInPath(getImguiContext(ctx), true);
     ctx.renderer.moveTo(pos.x, pos.y);
+}
+
+export function copyFrom(ctx: CanvasFrameContext, other: Canvas) {
+    ctx.renderer.drawImage(other.ctx.canvas, 0, 0);
 }
 
 export function path(ctx: CanvasFrameContext, draw: PathDrawer) {
