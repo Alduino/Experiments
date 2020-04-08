@@ -60,6 +60,10 @@ export default class Vector2 {
         return this.withLength(1);
     }
 
+    dir() {
+        return Math.atan2(this.y, this.x);
+    }
+
     dot(b: Vector2) {
         return (this.x * b.x) + (this.y * b.y);
     }
