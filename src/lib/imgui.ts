@@ -17,6 +17,13 @@ export interface TextOptions {
 
 export interface RenderDisabledOptions {}
 
+export interface PolygonOptions {
+    radius: number;
+    rotation?: number;
+    sides?: number;
+    distanceMods?: number[];
+}
+
 interface BasicBezierOptions {
     start?: Vector2;
     end: Vector2;
@@ -26,7 +33,7 @@ export type BezierOptions<T> = BasicBezierOptions & {[opt in keyof T]: Vector2}
 
 type RenderOptions = FillOptions | OutlineOptions | RenderDisabledOptions;
 
-type PathDrawer = () => void;
+type PathDrawer = (isNested: boolean) => void;
 
 interface ImguiContext {
     inPath: boolean;
@@ -165,18 +172,18 @@ export function copyFrom(ctx: CanvasFrameContext, other: Canvas) {
 
 export function path(ctx: CanvasFrameContext, draw: PathDrawer) {
     const iCtx = getImguiContext(ctx);
-    assertInPath(iCtx, false);
+    const wasInPath = iCtx.inPath;
 
     beginPath(ctx);
 
     iCtx.inPath = true;
-    const result = draw();
+    const result = draw(wasInPath);
 
     if ((result as any) instanceof Promise) {
-        throw new Error("Path drawers must be run simultaneously.");
+        throw new Error("Path drawers must be run synchronously.");
     }
 
-    iCtx.inPath = false;
+    iCtx.inPath = wasInPath;
 }
 
 export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
@@ -188,4 +195,23 @@ export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
 
 export function circle(ctx: CanvasFrameContext, centre: Vector2, radius: number, opts: RenderOptions) {
     arc(ctx, centre, radius, 0, Math.PI * 2, false, opts);
+}
+
+export function polygon(ctx: CanvasFrameContext, centre: Vector2, opts: RenderOptions & PolygonOptions) {
+    const {rotation = 0, sides = 3, radius, distanceMods = []} = opts;
+    if (sides < 3) throw new Error("Polygon must have at least 3 sides");
+
+    path(ctx, () => {
+        for (let i = 0; i <= sides; i++) {
+            const rad = radius + distanceMods[i % sides] || 0;
+            const rad2 = new Vector2(rad, rad);
+            const angle = rotation + (i / sides) * Math.PI * 2;
+            const point = new Vector2(Math.cos(angle), Math.sin(angle)).multiply(rad2).add(centre);
+
+            if (i === 0) moveTo(ctx, point);
+            else line(ctx, {end: point});
+        }
+    });
+
+    drawPath(ctx, opts);
 }
