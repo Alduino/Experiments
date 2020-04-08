@@ -1,5 +1,5 @@
 import Canvas from "./canvas-setup";
-import {line, clear, copyFrom} from "./imgui";
+import {line, rect, copyFrom} from "./imgui";
 import Vector2 from "./Vector2";
 
 interface Point {
@@ -11,7 +11,6 @@ const pointsCount = 200;
 const lineMaxDistance = .1;
 
 const canvas = new Canvas("canvas");
-const blurCanvas = new Canvas("blur-canvas");
 
 const points: Point[] = Array.from({length: pointsCount}, _ => ({
     pos: new Vector2(Math.random(), Math.random()),
@@ -24,7 +23,9 @@ function makeColour(alpha: number): string {
 }
 
 canvas.start(ctx => {
-    clear(ctx);
+    rect(ctx, new Vector2(), ctx.screenSize, {
+        fill: "black"
+    });
 
     const pointsWithMouse = [...points, {
         pos: ctx.mousePos.divide(ctx.screenSize),
@@ -53,11 +54,4 @@ canvas.start(ctx => {
         if (pt.pos.y < -lineMaxDistance) pt.pos = new Vector2(pt.pos.x, 1 + lineMaxDistance);
         if (pt.pos.y > 1 + lineMaxDistance) pt.pos = new Vector2(pt.pos.x, -lineMaxDistance);
     }
-});
-
-blurCanvas.ctx.globalCompositeOperation = "screen";
-blurCanvas.start(ctx => {
-    clear(ctx);
-    copyFrom(ctx, canvas);
-    copyFrom(ctx, canvas);
 });
