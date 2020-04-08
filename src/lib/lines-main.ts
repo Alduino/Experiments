@@ -47,8 +47,8 @@ canvas.start(ctx => {
     }
 
     for (const pt of points) {
-        if (ctx.mouseDown.left) pt.pos = pt.pos.add(pt.dir.multiply(new Vector2(10, 10)));
-        else pt.pos = pt.pos.add(pt.dir);
+        const speed = (ctx.mouseDown.left ? 600 : 60) * ctx.deltaTime;
+        pt.pos = pt.pos.add(pt.dir.multiply(new Vector2(speed, speed)));
         if (pt.pos.x < -lineMaxDistance) pt.pos = new Vector2(1 + lineMaxDistance, pt.pos.y);
         if (pt.pos.x > 1 + lineMaxDistance) pt.pos = new Vector2(-lineMaxDistance, pt.pos.y);
         if (pt.pos.y < -lineMaxDistance) pt.pos = new Vector2(pt.pos.x, 1 + lineMaxDistance);
