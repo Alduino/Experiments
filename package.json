@@ -13,6 +13,7 @@
     "typescript": "^3.7.4"
   },
   "dependencies": {
-    "bezier-js": "^2.5.1"
+    "bezier-js": "^2.5.1",
+    "open-simplex-noise": "^2.2.0"
   }
 }
