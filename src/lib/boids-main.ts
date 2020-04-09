@@ -1,3 +1,4 @@
+import {makeNoise2D} from "open-simplex-noise";
 import Canvas from "./canvas-setup";
 import {arc, circle, draw, line, moveTo, path, polygon, rect} from "./imgui";
 import Vector2 from "./Vector2";
@@ -27,9 +28,19 @@ const noHitExponent = .5;
 
 const dirExpansion = new Vector2(.1, .1);
 
+const wind = new Vector2(.03, .03);
+const windNoiseX = makeNoise2D(Date.now());
+const windNoiseY = makeNoise2D(Date.now() + 1);
+const terrainNoise = makeNoise2D(Date.now() + 2);
+
 function colourWithOpacity(colour: string, opacity: number) {
     opacity = Math.min(1, Math.max(0, opacity));
     return colour + Math.floor(opacity * 255).toString(16).padStart(2, "0");
+}
+
+function greyscale(brightness: number) {
+    const val = Math.round(Math.min(1, Math.max(0, brightness)) * 255).toString(16).padStart(2, " ");
+    return "#" + val + val + val;
 }
 
 const canvas = new Canvas("canvas");
@@ -83,7 +94,22 @@ canvas.start(ctx => {
     let noHitDir = 0, sameDirDir = 0, centrePosDir = 0, noHitInfluence = 0;
     let centrePosition = new Vector2(), centreCount = 0;
 
-    for (let i = 0; i < points.length; i++){
+    const incr = .01;
+    for (let x = 0; x < 1; x += incr) {
+        for (let y = 0; y < 1; y += incr) {
+            const sampleX = points[0].pos.x + x;
+            const sampleY = points[0].pos.y + y;
+
+            rect(ctx, new Vector2(x, y).multiply(ctx.screenSize), new Vector2(x + incr * 1.5, y + incr * 1.5).multiply(ctx.screenSize), {
+                fill: greyscale((terrainNoise(sampleX * 4, sampleY * 4) + .5) / 2)
+            });
+        }
+    }
+
+    const point0Pos = points[0].pos.multiply(ctx.screenSize).subtract(ctx.screenSize.divide(new Vector2(2, 2)));
+    ctx.renderer.translate(-point0Pos.x, -point0Pos.y);
+
+    for (let i = 0; i < points.length; i++) {
         let point = points[i];
 
         const visibleBoids = points.filter((pt, j) =>
@@ -228,6 +254,8 @@ canvas.start(ctx => {
         });
     }
 
+    ctx.renderer.resetTransform();
+
     for (const pt of points) {
         const diff = angleNormalised(pt.targetDir, pt.dir);
         pt.dir += diff * maxSpinSpeed;
@@ -235,10 +263,15 @@ canvas.start(ctx => {
 
         const speed = .05 * ctx.deltaTime * pt.speed * (1.1 - Math.abs(diff / Math.PI));
 
+        const windAmntX = windNoiseX(pt.pos.x, pt.pos.y);
+        const windAmntY = windNoiseY(pt.pos.x, pt.pos.y);
+
         pt.pos = pt.pos.add(Vector2.fromDir(pt.dir).multiply(new Vector2(speed, speed)));
-        if (pt.pos.x < 0) pt.pos = new Vector2(1, pt.pos.y);
-        if (pt.pos.x > 1) pt.pos = new Vector2(0, pt.pos.y);
-        if (pt.pos.y < 0) pt.pos = new Vector2(pt.pos.x, 1);
-        if (pt.pos.y > 1) pt.pos = new Vector2(pt.pos.x, 0);
+        pt.pos = pt.pos.add(new Vector2(windAmntX, windAmntY).multiply(wind).multiply(new Vector2(ctx.deltaTime, ctx.deltaTime)));
+
+        // if (pt.pos.x < 0) pt.pos = new Vector2(1, pt.pos.y);
+        // if (pt.pos.x > 1) pt.pos = new Vector2(0, pt.pos.y);
+        // if (pt.pos.y < 0) pt.pos = new Vector2(pt.pos.x, 1);
+        // if (pt.pos.y > 1) pt.pos = new Vector2(pt.pos.x, 0);
     }
 });
