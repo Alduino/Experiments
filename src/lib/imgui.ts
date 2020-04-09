@@ -203,7 +203,7 @@ export function polygon(ctx: CanvasFrameContext, centre: Vector2, opts: RenderOp
 
     path(ctx, () => {
         for (let i = 0; i <= sides; i++) {
-            const rad = radius + distanceMods[i % sides] || 0;
+            const rad = radius + (distanceMods[i % sides] || 0);
             const rad2 = new Vector2(rad, rad);
             const angle = rotation + (i / sides) * Math.PI * 2;
             const point = new Vector2(Math.cos(angle), Math.sin(angle)).multiply(rad2).add(centre);
