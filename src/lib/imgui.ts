@@ -110,7 +110,7 @@ function moveWhenNotInPath(ctx: CanvasFrameContext, pos: Vector2 | undefined, ar
 
 export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: RenderOptions) {
     beginPath(ctx);
-    ctx.renderer.rect(a.x, a.y, b.x, b.y);
+    ctx.renderer.rect(a.x, a.y, b.x - a.x, b.y - a.y);
     drawPath(ctx, opts);
 }
 
