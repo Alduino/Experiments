@@ -1,4 +1,4 @@
-import {makeNoise2D} from "open-simplex-noise";
+import {makeNoise2D, makeNoise3D} from "open-simplex-noise";
 import Canvas from "./canvas-setup";
 import {arc, circle, draw, line, moveTo, path, polygon, rect} from "./imgui";
 import Vector2 from "./Vector2";
@@ -28,9 +28,9 @@ const noHitExponent = .5;
 
 const dirExpansion = new Vector2(.1, .1);
 
-const wind = new Vector2(.03, .03);
-const windNoiseX = makeNoise2D(Date.now());
-const windNoiseY = makeNoise2D(Date.now() + 1);
+const wind = new Vector2(.05, .05);
+const windNoiseX = makeNoise3D(Date.now());
+const windNoiseY = makeNoise3D(Date.now() + 1);
 const terrainNoise = makeNoise2D(Date.now() + 2);
 
 function colourWithOpacity(colour: string, opacity: number) {
@@ -263,8 +263,8 @@ canvas.start(ctx => {
 
         const speed = .05 * ctx.deltaTime * pt.speed * (1.1 - Math.abs(diff / Math.PI));
 
-        const windAmntX = windNoiseX(pt.pos.x, pt.pos.y);
-        const windAmntY = windNoiseY(pt.pos.x, pt.pos.y);
+        const windAmntX = windNoiseX(pt.pos.x, pt.pos.y, performance.now() / 3000);
+        const windAmntY = windNoiseY(pt.pos.x, pt.pos.y, performance.now() / 3000);
 
         pt.pos = pt.pos.add(Vector2.fromDir(pt.dir).multiply(new Vector2(speed, speed)));
         pt.pos = pt.pos.add(new Vector2(windAmntX, windAmntY).multiply(wind).multiply(new Vector2(ctx.deltaTime, ctx.deltaTime)));
