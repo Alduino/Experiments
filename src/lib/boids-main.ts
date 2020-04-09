@@ -12,7 +12,7 @@ interface Point {
 
 // https://soundcloud.com/meganeko/space-magic
 
-const pointsCount = 100;
+const pointsCount = 500;
 
 const radius = .01;
 const viewDistance = .15;
@@ -49,7 +49,7 @@ const points: Point[] = Array.from({length: pointsCount}, _ => {
     const dir = Math.random() * 2 * Math.PI;
 
     return {
-        pos: new Vector2(Math.random(), Math.random()),
+        pos: new Vector2(Math.random() * 3 - 1, Math.random() * 3 - 1),
         dir,
         targetDir: dir,
         speed: .2 + Math.random() * 1.6
