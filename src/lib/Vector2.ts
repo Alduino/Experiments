@@ -10,6 +10,10 @@ export default class Vector2 {
         return new Vector2(obj.x, obj.y);
     }
 
+    static fromDir(dir: number) {
+        return new Vector2(Math.cos(dir), Math.sin(dir));
+    }
+
     public readonly x: number;
     public readonly y: number;
 
