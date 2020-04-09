@@ -76,7 +76,7 @@ canvas.start(ctx => {
         fill: "black"
     });
 
-    if (+ctx.mouseDown) points[0].pos = ctx.mousePos.divide(ctx.screenSize);
+    //if (+ctx.mouseDown) points[0].pos = ctx.mousePos.divide(ctx.screenSize);
 
     const radiusMultiplier = Math.min(ctx.screenSize.x, ctx.screenSize.y);
 
