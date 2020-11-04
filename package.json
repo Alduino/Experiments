@@ -10,7 +10,7 @@
     "@types/bezier-js": "0.0.8",
     "parcel": "next",
     "sass": "^1.24.0",
-    "typescript": "^3.7.4"
+    "typescript": "^4.0.5"
   },
   "dependencies": {
     "bezier-js": "^2.5.1",
