@@ -107,6 +107,11 @@ export default class Vector2 {
         return rad * sign;
     }
 
+    assignTo(obj: {x: number, y: number}) {
+        obj.x = this.x;
+        obj.y = this.y;
+    }
+
     toString() {
         return `[${this.x}, ${this.y}]`;
     }
