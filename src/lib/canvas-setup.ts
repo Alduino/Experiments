@@ -50,7 +50,6 @@ class KeyState {
     }
 
     with(key: string, state: boolean) {
-        console.debug("Key", key, "changed state to", state ? "pressed" : "released");
         const newState = this.clone();
         newState._keys[key] = state;
         return newState;
@@ -221,7 +220,7 @@ class CanvasFrameContextFactory {
         this._mousePos = mousePagePos.subtract(offset);
     }
 
-    private handleKeyChange(ev: KeyboardEvent, state: boolean) {
+    private handleKeyChange(state: boolean, ev: KeyboardEvent) {
         this._keyState = this._keyState.with(ev.key, state);
     }
 
@@ -351,6 +350,13 @@ export default class Canvas {
                 if (this._defaultPrevented[ev]) event.preventDefault();
             });
         });
+
+        if (process.env.NODE_ENV !== "production") {
+            if (!this._canv.hasAttribute("tabindex")) {
+                console.error("Canvas must have a tab index when keyboard states are used\n\n" +
+                    "This message will only be shown in development builds.");
+            }
+        }
     }
 
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
