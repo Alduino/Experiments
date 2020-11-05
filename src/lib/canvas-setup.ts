@@ -30,6 +30,41 @@ class MouseState {
     }
 }
 
+class KeyState {
+    static fromEntries(entries: [string, boolean][]): KeyState {
+        const newState = new KeyState();
+
+        for (const [key, state] of entries) {
+            newState[key] = state;
+        }
+
+        return newState;
+    }
+
+    private readonly _keys: {[key: string]: boolean} = {};
+
+    private clone() {
+        const newState = new KeyState();
+        Object.assign(newState._keys, this._keys);
+        return newState;
+    }
+
+    with(key: string, state: boolean) {
+        console.debug("Key", key, "changed state to", state ? "pressed" : "released");
+        const newState = this.clone();
+        newState._keys[key] = state;
+        return newState;
+    }
+
+    get(key: string) {
+        return this._keys[key] || false;
+    }
+
+    entries(): [string, boolean][] {
+        return Object.entries(this._keys);
+    }
+}
+
 export enum RenderTrigger {
     Always = 0,
 
@@ -88,6 +123,21 @@ export interface CanvasFrameContext {
     mouseReleased: MouseState;
 
     /**
+     * An object containing each Key name and its state, as well as each keyCode and its state
+     */
+    keyDown: KeyState;
+
+    /**
+     * Same as `.keyDown` but rising edge
+     */
+    keyPressed: KeyState;
+
+    /**
+     * Same as `.keyDown` but falling edge
+     */
+    keyReleased: KeyState;
+
+    /**
      * The current position of the mouse
      */
     mousePos: Vector2;
@@ -104,7 +154,7 @@ export interface CanvasFrameContext {
 }
 
 class CanvasFrameContextFactory {
-    private static risingEdge(curr: MouseState, prev: MouseState): MouseState {
+    private static risingEdgeMouse(curr: MouseState, prev: MouseState): MouseState {
         return new MouseState(
             curr.left && !prev.left,
             curr.mid && !prev.mid,
@@ -112,7 +162,7 @@ class CanvasFrameContextFactory {
         );
     }
 
-    private static fallingEdge(curr: MouseState, prev: MouseState): MouseState {
+    private static fallingEdgeMouse(curr: MouseState, prev: MouseState): MouseState {
         return new MouseState(
             !curr.left && prev.left,
             !curr.mid && prev.mid,
@@ -120,12 +170,27 @@ class CanvasFrameContextFactory {
         );
     }
 
+    private static risingEdgeKeys(curr: KeyState, prev: KeyState): KeyState {
+        return KeyState.fromEntries(
+            curr.entries()
+                .map(([key, state]) => [key, state && !prev.get(key)])
+        );
+    }
+    private static fallingEdgeKeys(curr: KeyState, prev: KeyState): KeyState {
+        return KeyState.fromEntries(
+            curr.entries()
+                .map(([key, state]) => [key, !state && prev.get(key)])
+        );
+    }
+
     private _previousFrameTime: number = -1;
     private _currentFrameTime: number = -1;
 
     private _mouseState: MouseState = new MouseState(false, false, false);
-
     private _previousMouseState: MouseState = this._mouseState;
+
+    private _keyState: KeyState = new KeyState();
+    private _previousKeyState: KeyState = this._keyState;
 
     private _mousePos: Vector2 = new Vector2();
     private _previousMousePos: Vector2 = this._mousePos;
@@ -156,6 +221,10 @@ class CanvasFrameContextFactory {
         this._mousePos = mousePagePos.subtract(offset);
     }
 
+    private handleKeyChange(ev: KeyboardEvent, state: boolean) {
+        this._keyState = this._keyState.with(ev.key, state);
+    }
+
     public get ctx() {
         return this._ctx;
     }
@@ -167,6 +236,8 @@ class CanvasFrameContextFactory {
         canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
         canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
         canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
+        canv.addEventListener("keydown", this.handleKeyChange.bind(this, true));
+        canv.addEventListener("keyup", this.handleKeyChange.bind(this, false));
     }
 
     preFrame() {
@@ -181,6 +252,7 @@ class CanvasFrameContextFactory {
     postFrame() {
         this._previousMousePos = this._mousePos;
         this._previousMouseState = this._mouseState;
+        this._previousKeyState = this._keyState;
     }
 
     createContext(): CanvasFrameContext {
@@ -195,11 +267,15 @@ class CanvasFrameContextFactory {
             screenSize: new Vector2(this._canv.width, this._canv.height),
 
             mouseDown: this._mouseState,
-            mousePressed: CanvasFrameContextFactory.risingEdge(this._mouseState, this._previousMouseState),
-            mouseReleased: CanvasFrameContextFactory.fallingEdge(this._mouseState, this._previousMouseState),
+            mousePressed: CanvasFrameContextFactory.risingEdgeMouse(this._mouseState, this._previousMouseState),
+            mouseReleased: CanvasFrameContextFactory.fallingEdgeMouse(this._mouseState, this._previousMouseState),
 
             mousePos: this._mousePos,
             mouseMoved: !this._mousePos.equal(this._previousMousePos),
+
+            keyDown: this._keyState,
+            keyPressed: CanvasFrameContextFactory.risingEdgeKeys(this._keyState, this._previousKeyState),
+            keyReleased: CanvasFrameContextFactory.fallingEdgeKeys(this._keyState, this._previousKeyState),
 
             disposeListeners: []
         };
