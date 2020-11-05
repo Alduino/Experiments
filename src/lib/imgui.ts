@@ -1,12 +1,14 @@
 import Vector2 from "./Vector2";
 import Canvas, {CanvasFrameContext} from "./canvas-setup";
 
+export type FillType = string | CanvasGradient;
+
 export interface FillOptions {
-    fill: string;
+    fill: FillType;
 }
 
 export interface OutlineOptions {
-    colour: string;
+    colour: FillType;
     thickness: number;
 }
 
@@ -214,4 +216,36 @@ export function polygon(ctx: CanvasFrameContext, centre: Vector2, opts: RenderOp
     });
 
     drawPath(ctx, opts);
+}
+
+///--- COLOUR UTILS ---\\\
+
+interface Stop {
+    time: number;
+    colour: string;
+}
+
+const gradientCache: Map<CanvasRenderingContext2D, Map<string, CanvasGradient>> = new Map();
+
+function createGradientHash(type: string, start: Vector2, end: Vector2, stops: Stop[]) {
+    return `${type}_${start}_${end}_${stops.map(stop => `${stop.time}_${stop.colour}`).join(",")}`;
+}
+
+export function linearGradient(ctx: CanvasFrameContext, start: Vector2, end: Vector2, stops: Stop[]) {
+    const hash = createGradientHash("linear", start, end, stops);
+
+    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new Map());
+    const gradientCacheMap = gradientCache.get(ctx.renderer);
+    if (gradientCacheMap.has(hash)) {
+        return gradientCacheMap.get(hash);
+    }
+
+    const gradient = ctx.renderer.createLinearGradient(start.x, start.y, end.x, end.y);
+
+    for (const stop of stops) {
+        gradient.addColorStop(stop.time, stop.colour);
+    }
+
+    gradientCacheMap.set(hash, gradient);
+    return gradient;
 }
