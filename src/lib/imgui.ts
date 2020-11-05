@@ -147,6 +147,7 @@ export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & Be
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
     ctx.renderer.quadraticCurveTo(opts.control.x, opts.control.y, opts.end.x, opts.end.y);
+    drawPath(ctx, opts);
 }
 
 export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{controlA, controlB}>) {
