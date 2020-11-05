@@ -14,7 +14,11 @@ export default class Vector2 {
         return new Vector2(Math.cos(dir), Math.sin(dir));
     }
 
+    static lerp(a: Vector2, b: Vector2, t: number) {
+        return b.subtract(a).multiply(new Vector2(t, t)).add(a);
+    }
     public readonly x: number;
+
     public readonly y: number;
 
     constructor(x: number = 0, y: number = 0) {
@@ -107,7 +111,7 @@ export default class Vector2 {
         return rad * sign;
     }
 
-    assignTo(obj: {x: number, y: number}) {
+    assignTo(obj: { x: number, y: number }) {
         obj.x = this.x;
         obj.y = this.y;
     }
