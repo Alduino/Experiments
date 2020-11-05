@@ -303,6 +303,8 @@ export default class Canvas {
         keyup: false
     };
 
+    private _defaultKeysPrevented: KeyState = new KeyState();
+
     public get ctx() {
         return this._contextFactory.ctx;
     }
@@ -332,6 +334,10 @@ export default class Canvas {
         if (this._trigger & cause) this.handleFrame(this._callback);
     }
 
+    private maybePreventKey(ev: KeyboardEvent) {
+        if (this._defaultKeysPrevented.get(ev.key)) ev.preventDefault();
+    }
+
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
         this._contextFactory = new CanvasFrameContextFactory(this._canv);
@@ -345,8 +351,11 @@ export default class Canvas {
         this._canv.addEventListener("keydown", this.handleTrigger.bind(this, RenderTrigger.KeyPressed));
         this._canv.addEventListener("keyup", this.handleTrigger.bind(this, RenderTrigger.KeyReleased));
 
+        this._canv.addEventListener("keydown", this.maybePreventKey.bind(this));
+        this._canv.addEventListener("keyup", this.maybePreventKey.bind(this));
+
         Object.keys(this._defaultPrevented).map(ev => {
-            window.addEventListener(ev, event => {
+            this._canv.addEventListener(ev, event => {
                 if (this._defaultPrevented[ev]) event.preventDefault();
             });
         });
@@ -378,5 +387,9 @@ export default class Canvas {
 
     public setDefaultPrevented(event: keyof DefaultPrevented, prevent: boolean) {
         this._defaultPrevented[event] = prevent;
+    }
+
+    public preventKeyDefault(key: string, prevent: boolean) {
+        this._defaultKeysPrevented = this._defaultKeysPrevented.with(key, prevent);
     }
 }
