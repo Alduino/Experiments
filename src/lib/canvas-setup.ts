@@ -282,6 +282,13 @@ class CanvasFrameContextFactory {
     }
 }
 
+interface DefaultPrevented {
+    mousedown: boolean;
+    mouseup: boolean;
+    keydown: boolean;
+    keyup: boolean;
+}
+
 export default class Canvas {
     private readonly _canv: HTMLCanvasElement;
 
@@ -289,6 +296,13 @@ export default class Canvas {
     private _trigger: RenderTrigger = RenderTrigger.Always;
     private _contextFactory: CanvasFrameContextFactory;
     private _callback: CanvasFrameRenderer | null = null;
+
+    private _defaultPrevented: DefaultPrevented = {
+        mousedown: false,
+        mouseup: false,
+        keydown: false,
+        keyup: false
+    };
 
     public get ctx() {
         return this._contextFactory.ctx;
@@ -331,6 +345,12 @@ export default class Canvas {
         this._canv.addEventListener("mousemove", this.handleTrigger.bind(this, RenderTrigger.MouseMoved));
         this._canv.addEventListener("keydown", this.handleTrigger.bind(this, RenderTrigger.KeyPressed));
         this._canv.addEventListener("keyup", this.handleTrigger.bind(this, RenderTrigger.KeyReleased));
+
+        Object.keys(this._defaultPrevented).map(ev => {
+            window.addEventListener(ev, event => {
+                if (this._defaultPrevented[ev]) event.preventDefault();
+            });
+        });
     }
 
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
@@ -348,5 +368,9 @@ export default class Canvas {
         this._running = false;
         this._trigger = RenderTrigger.Always;
         this._callback = null;
+    }
+
+    public setDefaultPrevented(event: keyof DefaultPrevented, prevent: boolean) {
+        this._defaultPrevented[event] = prevent;
     }
 }
