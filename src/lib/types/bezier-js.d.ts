@@ -45,8 +45,6 @@ declare module "bezier-js" {
     export class PolyBezier {
         constructor(curves: Bezier[]);
 
-        curves: Bezier[];
-
         valueOf(): string;
         toString(): string;
 
