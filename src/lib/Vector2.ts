@@ -111,6 +111,10 @@ export default class Vector2 {
         return rad * sign;
     }
 
+    angleTo(other: Vector2) {
+        return Math.atan2(other.y - this.y, other.x - this.x);
+    }
+
     assignTo(obj: { x: number, y: number }) {
         obj.x = this.x;
         obj.y = this.y;
