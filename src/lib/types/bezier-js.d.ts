@@ -41,6 +41,8 @@ declare module "bezier-js" {
 
         project(point: Point): Point;
 
+        split(t: number): {left: Bezier, right: Bezier};
+
         // TODO
     }
 
