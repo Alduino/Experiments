@@ -19,19 +19,25 @@ body {
 }
 
 .list {
+    display: flex;
+    flex-direction: column;
+
     width: 10vw;
     border-left: 2px solid white;
 
-    a {
+    color: white;
+    font-family: sans-serif;
+
+    > a {
         display: block;
-        color: white;
-        font-family: sans-serif;
         padding: 1em 1.3em;
         border-bottom: 1px solid #eef;
         text-decoration: none;
 
+        color: #bbbbee;
+
         &:hover {
-            color: #bbe;
+            color: #59599e;
         }
 
         &.description-visible::after {
@@ -45,6 +51,23 @@ body {
 
             font-size: .8em;
             color: #eef;
+        }
+    }
+
+    .spacer {
+        flex-grow: 1;
+    }
+
+    footer {
+        border-top: 1px solid #6d6d86;
+        padding: .5em;
+
+        a {
+            color: #bbbbee;
+
+            &:hover {
+                color: #59599e;
+            }
         }
     }
 }
