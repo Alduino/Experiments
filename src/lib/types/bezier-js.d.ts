@@ -39,6 +39,8 @@ declare module "bezier-js" {
 
         point(idx: number): Point;
 
+        project(point: Point): Point;
+
         // TODO
     }
 
