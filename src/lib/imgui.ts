@@ -10,6 +10,7 @@ export interface FillOptions {
 export interface OutlineOptions {
     colour: FillType;
     thickness: number;
+    dash?: [number, number];
 }
 
 export interface TextOptions {
@@ -89,6 +90,7 @@ function drawPath(ctx: CanvasFrameContext, opts?: RenderOptions) {
         } else if (isOutlineOptions(opts)) {
             ctx.renderer.strokeStyle = opts.colour;
             ctx.renderer.lineWidth = opts.thickness;
+            ctx.renderer.setLineDash(opts.dash || []);
             ctx.renderer.stroke();
         } else {
             throw new ReferenceError("Render options must be defined when outside path()");
