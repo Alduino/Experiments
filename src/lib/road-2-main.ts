@@ -130,7 +130,7 @@ function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
             }
         }
 
-        if (!snapped && isUsingGrid(ctx)) {
+        if (!snapped && isUsingGrid(ctx) && ctx.mouseDown.left) {
             drawGrid(ctx);
             targetPos = snapToGrid(targetPos);
         }
