@@ -265,18 +265,6 @@ function drawCurve(ctx: CanvasFrameContext, curve: Bezier, drawDots = true, high
     });
 
     if (drawDots) {
-        circle(ctx, curveP0, 4, {
-            fill: "#2c3d53"
-        });
-
-        circle(ctx, curveP1, 4, {
-            fill: "#2c4d53"
-        });
-
-        circle(ctx, curveP2, 4, {
-            fill: "#2c3d53"
-        });
-
         path(ctx, () => {
             moveTo(ctx, curveP1);
 
@@ -294,7 +282,19 @@ function drawCurve(ctx: CanvasFrameContext, curve: Bezier, drawDots = true, high
             thickness: 2,
             dash: [5, 3],
             colour: highlight
-        })
+        });
+
+        circle(ctx, curveP0, 4, {
+            fill: "#2c3d53"
+        });
+
+        circle(ctx, curveP1, 4, {
+            fill: "#2c4d53"
+        });
+
+        circle(ctx, curveP2, 4, {
+            fill: "#2c3d53"
+        });
     }
 }
 
