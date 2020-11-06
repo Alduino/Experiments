@@ -1,5 +1,7 @@
 import Canvas, {CanvasFrameContext, RenderTrigger} from "./canvas-setup";
-import Bezier, {PolyBezier} from "bezier-js";
+import Bezier, {Point2D, Point3D, PolyBezier} from "bezier-js";
+import {v4 as uuid} from "uuid";
+import iter from "itiriri";
 import {circle, clear, draw, line, linearGradient, moveTo, path, quadraticCurve, text} from "./imgui";
 import Vector2 from "./Vector2";
 
@@ -21,9 +23,17 @@ const SNAP_DISTANCE = 15;
 const GRID_SIZE = 30;
 const GRID_FALLOFF = 5;
 
-const polys: PolyBezier[] = [];
-let workingPoly: PolyBezier;
-let workingCurve: Bezier;
+type SegmentIdentifier = ReturnType<typeof uuid>;
+
+interface Segment {
+    id: SegmentIdentifier;
+    shape: Bezier;
+    startConnections: SegmentIdentifier[];
+    endConnections: SegmentIdentifier[];
+}
+
+const segments: Map<SegmentIdentifier, Segment> = new Map();
+let workingSegment: Segment;
 
 const KEYS = {
     noGrid: "Shift",
@@ -33,7 +43,7 @@ const KEYS = {
 
 const CONTROL_NAMES: {[control in keyof typeof KEYS]: string} = {
     noGrid: "Disable grid",
-    delete: "Remove poly",
+    delete: "Remove segment",
     noSnap: "Disable snapping"
 };
 
@@ -55,34 +65,21 @@ function handleCurveMakers(ctx: CanvasFrameContext, oldState: CurveMakerState): 
 }
 
 function getActionCurve(mousePos: Vector2) {
-    for (const poly of polys) {
-        for (const curve of poly.curves) {
-            if (Vector2.from(curve.project(mousePos)).distance(mousePos) < SNAP_DISTANCE)
-                return curve;
-        }
-    }
-
-    return null;
-}
-
-function getActionPoly(mousePos: Vector2) {
-    for (const poly of polys) {
-        for (const curve of poly.curves) {
-            if (Vector2.from(curve.project(mousePos)).distance(mousePos) < SNAP_DISTANCE)
-                return poly;
-        }
+    for (const curve of segments.values()) {
+        if (Vector2.from(curve.shape.project(mousePos)).distance(mousePos) < SNAP_DISTANCE)
+            return curve;
     }
 
     return null;
 }
 
 function getSnapLines(skip: Bezier[] = []) {
-    return polys.map(poly => poly.curves.map(curve => {
-        if (skip.includes(curve)) return [];
+    return iter(segments.values()).map(({shape}) => {
+        if (skip.includes(shape)) return [];
 
-        const curve0 = Vector2.from(curve.point(0));
-        const curve1 = Vector2.from(curve.point(1));
-        const curve2 = Vector2.from(curve.point(2));
+        const curve0 = Vector2.from(shape.point(0));
+        const curve1 = Vector2.from(shape.point(1));
+        const curve2 = Vector2.from(shape.point(2));
 
         return [
             // line from P1 to P0 then extended
@@ -90,37 +87,36 @@ function getSnapLines(skip: Bezier[] = []) {
             // line from P1 to P2 then extended
             new Bezier([curve2, Vector2.lerp(curve1, curve2, 1.5), Vector2.lerp(curve1, curve2, 2)])
         ];
-    })).flat(2);
+    }).flat(v => v);
 }
 
-let modifyCurve: Bezier;
+let modifySegment: Segment;
 function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): CurveMakerState {
-    const actionCurve = getActionCurve(ctx.mousePos);
-    const actionPoly = getActionPoly(ctx.mousePos);
-    if (actionPoly && ctx.keyDown.get(KEYS.delete)) {
-        drawPoly(ctx, actionPoly, false, HighlightType.Delete);
+    const actionSegment = getActionCurve(ctx.mousePos);
+    if (actionSegment && ctx.keyDown.get(KEYS.delete)) {
+        drawCurve(ctx, actionSegment.shape, false, HighlightType.Delete);
 
         if (ctx.mouseReleased.left) {
-            const index = polys.indexOf(actionPoly);
-            polys.splice(index, 1);
+            segments.delete(actionSegment.id);
         }
-    } else if (actionCurve || modifyCurve) {
-        if (actionCurve && !modifyCurve) modifyCurve = actionCurve;
+    } else if (actionSegment || modifySegment) {
+        if (actionSegment && !modifySegment) modifySegment = actionSegment;
 
-        const mCurve0 = Vector2.from(modifyCurve.point(0));
-        const mCurve2 = Vector2.from(modifyCurve.point(2));
+        const mCurve0 = Vector2.from(modifySegment.shape.point(0));
+        const mCurve2 = Vector2.from(modifySegment.shape.point(2));
 
         let targetPos = ctx.mousePos, snapped = false;
 
         if (!ctx.keyDown.get(KEYS.noSnap)) {
-            const snapLines = new PolyBezier([
-                new Bezier([mCurve0, Vector2.lerp(mCurve0, mCurve2, .5), mCurve2]),
-                ...getSnapLines([modifyCurve])
-            ]);
+            const snapLines = getSnapLines([modifySegment.shape])
+                .concat(new Bezier([mCurve0, Vector2.lerp(mCurve0, mCurve2, .5), mCurve2]))
+                .toArray();
 
-            drawPoly(ctx, snapLines, false, HighlightType.Snap);
+            for (const line of snapLines) {
+                drawCurve(ctx, line, false, HighlightType.Snap);
+            }
 
-            for (const curve of snapLines.curves) {
+            for (const curve of snapLines) {
                 const projectPoint = Vector2.from(curve.project(ctx.mousePos));
 
                 if (ctx.mousePos.distance(projectPoint) < SNAP_DISTANCE) {
@@ -135,10 +131,10 @@ function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
             targetPos = snapToGrid(targetPos);
         }
 
-        if (ctx.mouseDown.left) targetPos.assignTo(modifyCurve.point(1));
-        drawCurve(ctx, modifyCurve, true, HighlightType.Modify);
+        if (ctx.mouseDown.left) targetPos.assignTo(modifySegment.shape.point(1));
+        drawCurve(ctx, modifySegment.shape, true, HighlightType.Modify);
 
-        if (!ctx.mouseDown.left) modifyCurve = null;
+        if (!ctx.mouseDown.left) modifySegment = null;
     } else {
         if (ctx.mousePressed.left) return oldState + 1;
     }
@@ -212,16 +208,18 @@ function snapToGrid(point: Vector2) {
 }
 
 function drawExistingCurves(ctx: CanvasFrameContext) {
-    if (workingPoly) {
-        for (let i = 0; i < workingPoly.curves.length; i++) {
-            const bezier = workingPoly.curve(i);
-            drawCurve(ctx, bezier);
-        }
+    for (const {shape} of segments.values()) {
+        drawCurve(ctx, shape, false);
     }
+}
 
-    for (const poly of polys) {
-        drawPoly(ctx, poly, false);
-    }
+function createSegment(shape: Bezier): Segment {
+    return {
+        id: uuid(),
+        shape,
+        startConnections: [],
+        endConnections: []
+    };
 }
 
 function handleCurveInit(ctx: CanvasFrameContext, oldState: CurveMakerState): CurveMakerState {
@@ -235,7 +233,7 @@ function handleCurveInit(ctx: CanvasFrameContext, oldState: CurveMakerState): Cu
     if (ctx.mouseReleased.left) {
         // commit the curve
 
-        workingCurve = new Bezier([point, new Vector2(), new Vector2()]);
+        workingSegment = createSegment(new Bezier([point, new Vector2(), new Vector2()]));
 
         return oldState + 1;
     }
@@ -249,12 +247,6 @@ function handleCurveInit(ctx: CanvasFrameContext, oldState: CurveMakerState): Cu
 
 function snaps(previousPoint: Vector2, mousePos: Vector2) {
     return previousPoint.distance(mousePos) < SNAP_DISTANCE;
-}
-
-function drawPoly(ctx: CanvasFrameContext, poly: PolyBezier, drawDots = true, highlight: HighlightType | string = HighlightType.None) {
-    for (const curve of poly.curves) {
-        drawCurve(ctx, curve, drawDots, highlight);
-    }
 }
 
 function drawCurve(ctx: CanvasFrameContext, curve: Bezier, drawDots = true, highlight: HighlightType | string = HighlightType.None) {
@@ -313,33 +305,29 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
         drawGrid(ctx);
     }
 
-    const workingPointZero = Vector2.from(workingCurve.point(0));
-    const willSnap = snaps(Vector2.from(workingCurve.point(0)), ctx.mousePos);
+    const workingPointZero = Vector2.from(workingSegment.shape.point(0));
+    const willSnap = snaps(Vector2.from(workingSegment.shape.point(0)), ctx.mousePos);
     const targetPoint = willSnap ? workingPointZero : usingGrid ? snapToGrid(ctx.mousePos) : ctx.mousePos;
 
-    targetPoint.assignTo(workingCurve.point(2));
-    Vector2.lerp(targetPoint, Vector2.from(workingCurve.point(0)), .5)
-        .assignTo(workingCurve.point(1));
+    targetPoint.assignTo(workingSegment.shape.point(2));
+    Vector2.lerp(targetPoint, Vector2.from(workingSegment.shape.point(0)), .5)
+        .assignTo(workingSegment.shape.point(1));
 
     if (ctx.mouseReleased.left) {
-        if (workingPoly) workingPoly.addCurve(workingCurve);
-
         if (willSnap) {
             // at this point, snapping cancels the action
             // and exits out of this curve
-            if (workingPoly) polys.push(workingPoly);
-            workingPoly = null;
+            workingSegment = null;
             return CurveMakerState.Pre;
         } else {
             // finish this curve and start a new one at the end point
-
-            if (!workingPoly) workingPoly = new PolyBezier([workingCurve]);
-            workingCurve = new Bezier([targetPoint, new Vector2(), new Vector2()]);
+            segments.set(uuid(), workingSegment);
+            workingSegment = createSegment(new Bezier([targetPoint, new Vector2(), new Vector2()]));
             return CurveMakerState.End;
         }
     }
 
-    drawCurve(ctx, workingCurve);
+    drawCurve(ctx, workingSegment.shape);
 
     return oldState;
 }
@@ -353,6 +341,8 @@ canvas.preventKeyDefault("Alt", true);
 
 let curveMakerState = CurveMakerState.Pre;
 canvas.start(ctx => {
+    let startTime = performance.now();
+
     clear(ctx);
 
     drawExistingCurves(ctx);
@@ -392,4 +382,12 @@ canvas.start(ctx => {
             align: "left"
         });
     }
+
+    let endTime = performance.now();
+    text(ctx, new Vector2(10, 30), `${(endTime - startTime).toFixed(2)} ms`, {
+        fill: "black",
+        font: "10px monospace",
+        align: "left"
+    });
+//});
 }, RenderTrigger.MouseChanged | RenderTrigger.KeyChanged);
