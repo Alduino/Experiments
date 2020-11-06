@@ -321,7 +321,7 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
             return CurveMakerState.Pre;
         } else {
             // finish this curve and start a new one at the end point
-            segments.set(uuid(), workingSegment);
+            segments.set(workingSegment.id, workingSegment);
             workingSegment = createSegment(new Bezier([targetPoint, new Vector2(), new Vector2()]));
             return CurveMakerState.End;
         }
