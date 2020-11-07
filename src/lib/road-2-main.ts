@@ -92,14 +92,32 @@ function getSnapLines(skip: Bezier[] = []) {
 
 let modifySegment: Segment,
     modifyPoint: Point, oppositePoint: Vector2, startMid: Vector2,
+    connections: SegmentIdentifier[], connectionPoint: "start" | "end",
     startPointAngle: number, startPointDist: number;
+
+function deleteSegment(segment: Segment) {
+    segments.delete(segment.id);
+
+    for (const otherSegmentId of segment.startConnections) {
+        const otherSegment = segments.get(otherSegmentId);
+        const index = otherSegment.endConnections.indexOf(segment.id);
+        otherSegment.endConnections.splice(index);
+    }
+
+    for (const otherSegmentId of segment.endConnections) {
+        const otherSegment = segments.get(otherSegmentId);
+        const index = otherSegment.startConnections.indexOf(segment.id);
+        otherSegment.startConnections.splice(index);
+    }
+}
+
 function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): CurveMakerState {
     const actionSegment = getActionCurve(ctx.mousePos);
     if (actionSegment && ctx.keyDown.get(KEYS.delete)) {
         drawCurve(ctx, actionSegment.shape, false, HighlightType.Delete);
 
         if (ctx.mouseReleased.left) {
-            segments.delete(actionSegment.id);
+            deleteSegment(actionSegment);
         }
     } else if (actionSegment || modifySegment) {
         if (actionSegment && !modifySegment) modifySegment = actionSegment;
@@ -111,11 +129,15 @@ function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
             if (ctx.mousePos.distance(mCurve0) < SNAP_DISTANCE) {
                 modifyPoint = modifySegment.shape.point(0);
                 oppositePoint = mCurve2;
+                connections = modifySegment.startConnections;
+                connectionPoint = "end";
             }
 
             if (ctx.mousePos.distance(mCurve2) < SNAP_DISTANCE) {
                 modifyPoint = modifySegment.shape.point(2);
                 oppositePoint = mCurve0;
+                connections = modifySegment.endConnections;
+                connectionPoint = "start";
             }
 
             if (modifyPoint) {
@@ -154,11 +176,21 @@ function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
                 // however it is simpler than storing which one to write to somewhere
                 target.assignTo(modifyPoint);
                 newMid.assignTo(modifySegment.shape.point(1));
+
+                for (const connectionId of connections) {
+                    const connectionSeg = segments.get(connectionId);
+                    if (connectionPoint === "start") {
+                        target.assignTo(connectionSeg.shape.point(0));
+                    } else {
+                        target.assignTo(connectionSeg.shape.point(2));
+                    }
+                }
             }
 
             if (ctx.mouseReleased.left) {
                 modifyPoint = null;
                 oppositePoint = null;
+                connections = null;
             }
         } else {
             let targetPos = ctx.mousePos, snapped = false;
@@ -383,6 +415,7 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
         if (willSnap) {
             // at this point, snapping cancels the action
             // and exits out of this curve
+            deleteSegment(workingSegment);
             workingSegment = null;
             return CurveMakerState.Pre;
         } else {
@@ -390,7 +423,10 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
             segments.set(workingSegment.id, workingSegment);
             const previousSegment = workingSegment;
             workingSegment = createSegment(new Bezier([targetPoint, new Vector2(), new Vector2()]));
+
             workingSegment.startConnections.push(previousSegment.id);
+            previousSegment.endConnections.push(workingSegment.id);
+
             return CurveMakerState.End;
         }
     }
