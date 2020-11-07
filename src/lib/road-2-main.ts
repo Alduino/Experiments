@@ -1,5 +1,5 @@
 import Canvas, {CanvasFrameContext, RenderTrigger} from "./canvas-setup";
-import Bezier, {Point2D, Point3D, PolyBezier} from "bezier-js";
+import Bezier, {Point, Point2D, Point3D, PolyBezier} from "bezier-js";
 import {v4 as uuid} from "uuid";
 import iter from "itiriri";
 import {circle, clear, draw, line, linearGradient, moveTo, path, quadraticCurve, text} from "./imgui";
@@ -90,7 +90,9 @@ function getSnapLines(skip: Bezier[] = []) {
     }).flat(v => v);
 }
 
-let modifySegment: Segment;
+let modifySegment: Segment,
+    modifyPoint: Point, oppositePoint: Vector2, startMid: Vector2,
+    startPointAngle: number, startPointDist: number;
 function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): CurveMakerState {
     const actionSegment = getActionCurve(ctx.mousePos);
     if (actionSegment && ctx.keyDown.get(KEYS.delete)) {
@@ -105,33 +107,97 @@ function handleCurvePre(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
         const mCurve0 = Vector2.from(modifySegment.shape.point(0));
         const mCurve2 = Vector2.from(modifySegment.shape.point(2));
 
-        let targetPos = ctx.mousePos, snapped = false;
-
-        if (!ctx.keyDown.get(KEYS.noSnap)) {
-            const snapLines = getSnapLines([modifySegment.shape])
-                .concat(new Bezier([mCurve0, Vector2.lerp(mCurve0, mCurve2, .5), mCurve2]))
-                .toArray();
-
-            for (const line of snapLines) {
-                drawCurve(ctx, line, false, HighlightType.Snap);
+        if (ctx.mousePressed.left) {
+            if (ctx.mousePos.distance(mCurve0) < SNAP_DISTANCE) {
+                modifyPoint = modifySegment.shape.point(0);
+                oppositePoint = mCurve2;
             }
 
-            for (const curve of snapLines) {
-                const projectPoint = Vector2.from(curve.project(ctx.mousePos));
+            if (ctx.mousePos.distance(mCurve2) < SNAP_DISTANCE) {
+                modifyPoint = modifySegment.shape.point(2);
+                oppositePoint = mCurve0;
+            }
 
-                if (ctx.mousePos.distance(projectPoint) < SNAP_DISTANCE) {
-                    targetPos = projectPoint;
-                    snapped = true;
+            if (modifyPoint) {
+                const pointVec = Vector2.from(modifyPoint);
+                startPointAngle = pointVec.angleTo(oppositePoint);
+                startPointDist = pointVec.distance(oppositePoint);
+                startMid = Vector2.from(modifySegment.shape.point(1));
+            }
+        }
+
+        if (modifyPoint) {
+            circle(ctx, Vector2.from(modifyPoint), 7, {
+                thickness: 2,
+                colour: HighlightType.Modify,
+                dash: [3, 2]
+            });
+
+            if (ctx.mouseDown.left) {
+                let target = ctx.mousePos;
+
+                if (isUsingGrid(ctx)) {
+                    drawGrid(ctx);
+                    target = snapToGrid(target);
+                }
+
+                const pointAngleDiff = oppositePoint.angleTo(target) - startPointAngle;
+                const pointDistMul = oppositePoint.distance(target) / startPointDist;
+
+                const originalMidAngle = startMid.angleTo(oppositePoint);
+                const originalMidDist = startMid.distance(oppositePoint);
+
+                const newMid = Vector2.fromDir(originalMidAngle + pointAngleDiff)
+                    .withLength(originalMidDist * pointDistMul).add(oppositePoint);
+
+                // not the best way to do it, as points are meant to be readonly
+                // however it is simpler than storing which one to write to somewhere
+                target.assignTo(modifyPoint);
+                newMid.assignTo(modifySegment.shape.point(1));
+            }
+
+            if (ctx.mouseReleased.left) {
+                modifyPoint = null;
+                oppositePoint = null;
+            }
+        } else {
+            let targetPos = ctx.mousePos, snapped = false;
+
+            if (!ctx.keyDown.get(KEYS.noSnap)) {
+                const snapLines = getSnapLines([modifySegment.shape])
+                    .concat(new Bezier([mCurve0, Vector2.lerp(mCurve0, mCurve2, .5), mCurve2]))
+                    .toArray();
+
+                for (const line of snapLines) {
+                    drawCurve(ctx, line, false, HighlightType.Snap);
+                }
+
+                for (const curve of snapLines) {
+                    const projectPoint = Vector2.from(curve.project(ctx.mousePos));
+
+                    if (ctx.mousePos.distance(projectPoint) < SNAP_DISTANCE) {
+                        targetPos = projectPoint;
+                        snapped = true;
+                    }
                 }
             }
+
+            if (!snapped && isUsingGrid(ctx) && ctx.mouseDown.left) {
+                drawGrid(ctx);
+                targetPos = snapToGrid(targetPos);
+            }
+
+            if (ctx.mouseDown.left) {
+                targetPos.assignTo(modifySegment.shape.point(1));
+
+                circle(ctx, targetPos, 7, {
+                    thickness: 2,
+                    colour: HighlightType.Modify,
+                    dash: [3, 2]
+                });
+            }
         }
 
-        if (!snapped && isUsingGrid(ctx) && ctx.mouseDown.left) {
-            drawGrid(ctx);
-            targetPos = snapToGrid(targetPos);
-        }
-
-        if (ctx.mouseDown.left) targetPos.assignTo(modifySegment.shape.point(1));
         drawCurve(ctx, modifySegment.shape, true, HighlightType.Modify);
 
         if (!ctx.mouseDown.left) modifySegment = null;
