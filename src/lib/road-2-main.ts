@@ -388,7 +388,9 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
         } else {
             // finish this curve and start a new one at the end point
             segments.set(workingSegment.id, workingSegment);
+            const previousSegment = workingSegment;
             workingSegment = createSegment(new Bezier([targetPoint, new Vector2(), new Vector2()]));
+            workingSegment.startConnections.push(previousSegment.id);
             return CurveMakerState.End;
         }
     }
