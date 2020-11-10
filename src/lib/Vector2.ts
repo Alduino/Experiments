@@ -2,12 +2,33 @@ export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
+    /**
+     * Returns true if the points are at the same location
+     */
     static equal(a: Vector2, b: Vector2) {
         return a.x === b.x && a.y === b.y;
     }
 
+    /**
+     * Clones a point-like object into a Vector2
+     * @param obj An object with x and y keys
+     */
     static from(obj: {x: number, y: number}) {
         return new Vector2(obj.x, obj.y);
+    }
+
+    /**
+     * Imports an object, returning a Vector2 with linked values.
+     * @param obj An object with x and y keys
+     *
+     * The point of this method is that, if the x or y properties of this Vector2 are set, they will also
+     * change in the original object. This method should usually not be used, however sometimes it is just
+     * easier or cleaner than the alternative.
+     */
+    static import(obj: {x: number, y: number}) {
+        const vec = new Vector2();
+        vec._source = obj;
+        return vec;
     }
 
     static fromDir(dir: number) {
@@ -17,13 +38,27 @@ export default class Vector2 {
     static lerp(a: Vector2, b: Vector2, t: number) {
         return b.subtract(a).multiply(new Vector2(t, t)).add(a);
     }
-    public readonly x: number;
 
-    public readonly y: number;
+    private _source: {x: number, y: number};
+
+    public get x() {
+        return this._source.x;
+    }
+
+    public get y() {
+        return this._source.y;
+    }
+
+    public set x(value: number) {
+        this._source.x = value;
+    }
+
+    public set y(value: number) {
+        this._source.y = value;
+    }
 
     constructor(x: number = 0, y: number = 0) {
-        this.x = x;
-        this.y = y;
+        this._source = {x, y};
     }
 
     clone() {
