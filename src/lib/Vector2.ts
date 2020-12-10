@@ -42,18 +42,22 @@ export default class Vector2 {
     private _source: {x: number, y: number};
 
     public get x() {
+        if (!this._source) return undefined;
         return this._source.x;
     }
 
     public get y() {
+        if (!this._source) return undefined;
         return this._source.y;
     }
 
     public set x(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
         this._source.x = value;
     }
 
     public set y(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
         this._source.y = value;
     }
 
