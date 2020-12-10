@@ -17,6 +17,8 @@ declare module "bezier-js" {
     type Point = Point2D & Partial<Point3D>;
 
     export default class Bezier {
+        points: (Point2D | Point3D)[];
+
         // quadratic 2d
         constructor(coords: [number, number, number, number, number, number]);
         // quadratic 3d
