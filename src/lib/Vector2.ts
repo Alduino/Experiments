@@ -69,6 +69,11 @@ export default class Vector2 {
         return Vector2.equal(this, to);
     }
 
+    replace(to: {x: number, y: number}) {
+        this._source = to;
+        return this;
+    }
+
     add(to: Vector2) {
         return new Vector2(this.x + to.x, this.y + to.y);
     }
