@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "parcel src/*.html",
-    "build": "parcel build src/*.html"
+    "start": "cp -rf public dist && parcel src/*.html",
+    "build": "cp -rf public dist && parcel build src/*.html"
   },
   "devDependencies": {
     "@types/node": "^14.14.6",
