@@ -340,6 +340,8 @@ interface CoroutineContext {
 
 type GeneratorType = Generator<CoroutineAwait<unknown>, void, CoroutineContext>;
 
+export type NestHandler = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<unknown>;
+
 /**
  * Various coroutine awaiters
  *
@@ -348,13 +350,16 @@ type GeneratorType = Generator<CoroutineAwait<unknown>, void, CoroutineContext>;
  */
 export const c = {
     /**
-     * Waits until the first awaiter is complete, or aborts
-     * @returns The index of the awaiter that completed first
-     * @remarks
-     * - If two complete at the same time, will pick the first one passed
-     * - If the passed signal is aborted, will return with data `-1`
+     * Passes the result of each awaiter to `handler`, which reduces them down to one result.
+     *
+     * This function's purpose is to be wrapped by other awaiters to allow nesting of coroutines. Note that this
+     * function MUST be used for situations where a nested coroutine is possible (like waitForFirst, waitForAll etc),
+     * as it can handle edge cases with coroutine awaiters that cannot be handled in third party code.
+     *
+     * @param awaiters - List of awaiters to handle
+     * @param handler - Function that takes in the results, in order of passing, and reduces them down to a single one. Called every frame.
      */
-    waitForFirst(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
+    nest(awaiters: CoroutineAwait<unknown>[], handler: NestHandler): CoroutineAwait<unknown> {
         const coroutineAwaiters = new Set<StartCoroutineAwait>();
 
         for (const awaiter of awaiters) {
@@ -366,26 +371,74 @@ export const c = {
 
         return {
             shouldContinue(ctx: CanvasFrameContext) {
-                if (signal?.aborted) return {state: "aborted", data: -1};
+                const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
 
-                for (let i = 0; i < awaiters.length; i++){
+                for (let i = 0; i < awaiters.length; i++) {
                     const awaiter = awaiters[i];
-                    const result = awaiter.shouldContinue(ctx);
+                    results[i] = awaiter.shouldContinue(ctx);
+                }
 
-                    if (result.state) {
-                        // if the awaiter is a coroutine, abort it
-                        for (const otherAwaiter of coroutineAwaiters) {
-                            if (otherAwaiter === awaiter) continue;
-                            otherAwaiter.dispose();
-                        }
+                const result = handler(results);
 
-                        return {state: result.state, data: i};
+                if (result.state) {
+                    for (const coroutineAwaiter of coroutineAwaiters) {
+                        coroutineAwaiter.dispose();
                     }
                 }
 
+                return result;
+            }
+        }
+    },
+
+    /**
+     * Waits until the first awaiter is complete, or aborts
+     * @returns The index of the awaiter that completed first
+     * @remarks
+     * - If two complete at the same time, will pick the first one passed
+     * - If the passed signal is aborted, will return with data `-1`
+     */
+    waitForFirst(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
+        return this.nest(awaiters, results => {
+            if (signal.aborted) return {state: "aborted", data: -1};
+
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i];
+                if (result.state) return {
+                    state: result.state,
+                    data: i
+                };
+            }
+
+            return {state: false};
+        });
+    },
+
+    /**
+     * Waits until all awaiters are complete, or one aborts.
+     * If an awaiter aborts, its index is returned. Otherwise, -1 is returned.
+     */
+    waitForAll(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
+        return this.nest(awaiters, results => {
+            if (signal.aborted) return {state: "aborted", data: -1};
+
+            let allComplete = true;
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i];
+                if (result.state === "aborted") return {
+                    state: "aborted",
+                    data: i
+                };
+
+                if (!result.state) allComplete = false;
+            }
+
+            if (allComplete) {
+                return {state: true, data: -1};
+            } else {
                 return {state: false};
             }
-        };
+        });
     },
 
     /**
