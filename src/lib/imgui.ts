@@ -18,6 +18,12 @@ export interface TextOptions {
     align: CanvasTextAlign;
 }
 
+export interface TextWithBackgroundOptions {
+    background: RenderOptions;
+    text: (FillOptions | OutlineOptions) & TextOptions;
+    padding: Vector2;
+}
+
 export interface RenderDisabledOptions {}
 
 export interface PolygonOptions {
@@ -129,9 +135,15 @@ export function arc(ctx: CanvasFrameContext, centre: Vector2, radius: number, st
     drawPath(ctx, opts);
 }
 
+export function measureText(ctx: CanvasFrameContext, text: string, opts: Omit<TextOptions, "align">) {
+    ctx.renderer.font = opts.font;
+    return ctx.renderer.measureText(text);
+}
+
 export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: (FillOptions | OutlineOptions) & TextOptions) {
     assertInPath(getImguiContext(ctx), false);
 
+    ctx.renderer.textBaseline = "top";
     ctx.renderer.font = opts.font;
     ctx.renderer.textAlign = opts.align;
 
@@ -143,6 +155,15 @@ export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: 
         ctx.renderer.lineWidth = opts.thickness;
         ctx.renderer.strokeText(text, pos.x, pos.y);
     }
+}
+
+export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
+    const textMeasurement = measureText(ctx, value, opts.text);
+    const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
+    const rectSize = textSize.add(opts.padding.add(opts.padding));
+
+    rect(ctx, pos, pos.add(rectSize), opts.background);
+    text(ctx, pos.add(opts.padding), value, opts.text);
 }
 
 export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{control}>) {

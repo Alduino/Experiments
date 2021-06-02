@@ -86,11 +86,13 @@ export default class Vector2 {
         return new Vector2(this.x - from.x, this.y - from.y);
     }
 
-    multiply(by: Vector2) {
+    multiply(by: Vector2 | number) {
+        if (typeof by === "number") by = new Vector2(by, by);
         return new Vector2(this.x * by.x, this.y * by.y);
     }
 
-    divide(by: Vector2) {
+    divide(by: Vector2 | number) {
+        if (typeof by === "number") by = new Vector2(by, by);
         return new Vector2(this.x / by.x, this.y / by.y);
     }
 
