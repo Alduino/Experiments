@@ -7,11 +7,17 @@ export interface FillOptions {
     fill: FillType;
 }
 
-export interface OutlineOptions {
+interface OutlineOptionsWithoutDash {
     colour: FillType;
     thickness: number;
-    dash?: [number, number];
 }
+
+interface OutlineOptionsWithDash {
+    dash: number[];
+    dashOffset?: number;
+}
+
+export type OutlineOptions = OutlineOptionsWithoutDash | (OutlineOptionsWithoutDash & OutlineOptionsWithDash);
 
 export interface TextOptions {
     font: string;
@@ -79,6 +85,10 @@ function isOutlineOptions(options: RenderOptions): options is OutlineOptions {
            typeof (options as OutlineOptions).colour !== "undefined";
 }
 
+function isDashOutlineOptions(options: OutlineOptions): options is OutlineOptions & OutlineOptionsWithDash {
+    return Array.isArray((options as OutlineOptionsWithDash).dash);
+}
+
 function beginPath(ctx: CanvasFrameContext) {
     const iCtx = getImguiContext(ctx);
     if (iCtx.inPath) return;
@@ -96,7 +106,14 @@ function drawPath(ctx: CanvasFrameContext, opts?: RenderOptions) {
         } else if (isOutlineOptions(opts)) {
             ctx.renderer.strokeStyle = opts.colour;
             ctx.renderer.lineWidth = opts.thickness;
-            ctx.renderer.setLineDash(opts.dash || []);
+
+            if (isDashOutlineOptions(opts)) {
+                ctx.renderer.setLineDash(opts.dash);
+                ctx.renderer.lineDashOffset = opts.dashOffset || 0;
+            } else {
+                ctx.renderer.setLineDash([]);
+            }
+
             ctx.renderer.stroke();
         } else {
             throw new ReferenceError("Render options must be defined when outside path()");

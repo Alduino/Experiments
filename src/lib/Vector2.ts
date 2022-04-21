@@ -2,6 +2,8 @@ export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
+    static readonly NaN = new Vector2(NaN, NaN);
+
     /**
      * Returns true if the points are at the same location
      */
@@ -100,8 +102,12 @@ export default class Vector2 {
         return new Vector2(-this.x, -this.y);
     }
 
+    lengthSquared() {
+        return this.x * this.x + this.y * this.y;
+    }
+
     length() {
-        return Math.sqrt(this.x ** 2 + this.y ** 2);
+        return Math.sqrt(this.lengthSquared());
     }
 
     withLength(length: number) {
@@ -135,6 +141,10 @@ export default class Vector2 {
             this.x * Math.cos(radians) - this.y * Math.sin(radians),
             this.y * Math.cos(radians) + this.x * Math.sin(radians)
         );
+    }
+
+    perpendicular(inv = false) {
+        return new Vector2(this.y * (inv ? -1 : 1), this.x * (inv ? 1 : -1));
     }
 
     angleUnsigned(other: Vector2) {
