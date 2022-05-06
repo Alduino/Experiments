@@ -124,6 +124,10 @@ export default class Vector2 {
         return Math.atan2(this.y, this.x);
     }
 
+    abs() {
+        return new Vector2(Math.abs(this.x), Math.abs(this.y));
+    }
+
     dot(b: Vector2) {
         return (this.x * b.x) + (this.y * b.y);
     }
