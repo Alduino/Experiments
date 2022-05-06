@@ -174,15 +174,6 @@ export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: 
     }
 }
 
-export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
-    const textMeasurement = measureText(ctx, value, opts.text);
-    const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
-    const rectSize = textSize.add(opts.padding.add(opts.padding));
-
-    rect(ctx, pos, pos.add(rectSize), opts.background);
-    text(ctx, pos.add(opts.padding), value, opts.text);
-}
-
 export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{control}>) {
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
@@ -235,6 +226,15 @@ export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
 }
 
 ///--- COMPOSITE SHAPES ---\\\
+
+export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
+    const textMeasurement = measureText(ctx, value, opts.text);
+    const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
+    const rectSize = textSize.add(opts.padding.add(opts.padding));
+
+    rect(ctx, pos, pos.add(rectSize), opts.background);
+    text(ctx, pos.add(opts.padding), value, opts.text);
+}
 
 export function circle(ctx: CanvasFrameContext, centre: Vector2, radius: number, opts: RenderOptions) {
     arc(ctx, centre, radius, 0, Math.PI * 2, false, opts);
