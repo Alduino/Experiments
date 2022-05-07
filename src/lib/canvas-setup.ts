@@ -416,7 +416,7 @@ function isStartCoroutineAwait(v: CoroutineAwait<void>): v is StartCoroutineAwai
     return typeof (v as StartCoroutineAwait).cancelRootCheck === "function";
 }
 
-interface CoroutineContext {
+export interface CoroutineContext {
     /**
      * The context of the next frame that will be rendered
      */
