@@ -435,8 +435,8 @@ interface CoroutineContext {
 
 type GeneratorType = Generator<CoroutineAwait<unknown>, void, CoroutineContext>;
 
-export type NestHandler = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<unknown>;
-export type NestErrorHandler = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<unknown> | false;
+export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
+export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
 
 /**
  * Various coroutine awaiters
@@ -457,7 +457,7 @@ export const c = {
      * @param handler - Function that takes in the results, in order of passing, and reduces them down to a single one. Called every frame.
      * @param errorHandler - Called when a child awaiter throws an error, similar to `catch`. Return a result if it was handled, or false to propagate the error up.
      */
-    nest(identifier: string, awaiters: CoroutineAwait<unknown>[], handler: NestHandler, errorHandler?: NestErrorHandler): CoroutineAwait<unknown> {
+    nest<T>(identifier: string, awaiters: CoroutineAwait<unknown>[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
         if (awaiters.length === 0) throw new Error("Must have at least one awaiter");
 
         const coroutineAwaiters = new Set<StartCoroutineAwait>();
@@ -476,7 +476,7 @@ export const c = {
             init(initTraces: string[]) {
                 traces = initTraces;
             },
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
                 const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
 
                 let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
