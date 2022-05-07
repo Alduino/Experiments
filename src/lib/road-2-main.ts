@@ -1,5 +1,5 @@
 import Canvas, {CanvasFrameContext, RenderTrigger} from "./canvas-setup";
-import Bezier, {Point} from "bezier-js";
+import {Bezier, Point} from "bezier-js";
 import {v4 as uuid} from "uuid";
 import iter from "itiriri";
 import {circle, clear, draw, line, linearGradient, moveTo, path, quadraticCurve, text} from "./imgui";
