@@ -972,22 +972,39 @@ export default class Canvas {
         return this._contextFactory.ctx;
     }
 
-    private static drawDebugLine(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", offsetY: number, name: string, message: string) {
+    private static drawDebugLine(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", offsetY: number, items: { name: string, message: string }[]) {
         const opts: TextWithBackgroundOptions = {
             text: {font: "12px sans-serif", align: "left", fill: "white"},
             background: {fill: "#0009"},
             padding: new Vector2(4, 4)
         };
 
-        const text = `${name}: ${message}`;
-        const {width: textWidth} = measureText(ctx, text, opts.text);
+        const isRight = corner.endsWith("r");
+        const isBottom = corner.startsWith("b");
 
-        const xPos = corner.endsWith("r") ? ctx.screenSize.x - textWidth - 5 : 5;
-        const yPos = corner.startsWith("b") ? ctx.screenSize.y - offsetY - 20 : offsetY;
+        let maxHeight = 0;
 
-        textWithBackground(ctx, new Vector2(xPos, yPos), text, opts);
+        let xPos = isRight ? ctx.screenSize.x - 5 : 5;
+        const yPos = isBottom ? ctx.screenSize.y - offsetY - 20 : offsetY;
 
-        return offsetY + 20;
+        for (const {name, message} of items) {
+            const text = `${name}: ${message}`;
+            const {
+                width: textWidth,
+                actualBoundingBoxAscent,
+                actualBoundingBoxDescent
+            } = measureText(ctx, text, opts.text);
+
+            maxHeight = Math.max(maxHeight, actualBoundingBoxAscent + actualBoundingBoxDescent);
+
+            if (isRight) xPos -= textWidth;
+            textWithBackground(ctx, new Vector2(xPos, yPos), text, opts);
+
+            if (!isRight) xPos += textWidth + 15;
+            else xPos -= 15;
+        }
+
+        return offsetY + maxHeight + 10;
     }
 
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
@@ -1024,15 +1041,30 @@ export default class Canvas {
             FPS: `${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`,
             M: ctx.mousePos.toString(),
             D: ctx.disposeListeners.length.toFixed(0),
-            C: this._coroutineManager.size.toFixed(0),
+            _C: this._coroutineManager.size.toFixed(0),
             CN: this._coroutineManager.identifiers.join(", ")
         });
     }
 
     public drawCustomDebug(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", messages: Record<string, string>) {
         let offsetY = 5;
+
+        let messagesToWrite: { name: string, message: string }[] = [];
+
         for (const [name, message] of Object.entries(messages)) {
-            offsetY = Canvas.drawDebugLine(ctx, corner, offsetY, name, message);
+            const sameLine = name.startsWith("_");
+
+            if (!sameLine && messagesToWrite.length > 0) {
+                offsetY = Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
+                messagesToWrite.length = 0;
+            }
+
+            const displayName = sameLine ? name.substring(1) : name;
+            messagesToWrite.push({name: displayName, message});
+        }
+
+        if (messagesToWrite.length > 0) {
+            Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
         }
     }
 
