@@ -2,8 +2,6 @@ export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
-    static readonly NaN = new Vector2(NaN, NaN);
-
     /**
      * Returns true if the points are at the same location
      */
@@ -64,6 +62,10 @@ export default class Vector2 {
     }
 
     constructor(x: number = 0, y: number = 0) {
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+            throw new Error("x or y are NaN");
+        }
+
         this._source = {x, y};
     }
 
