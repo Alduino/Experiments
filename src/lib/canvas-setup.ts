@@ -956,6 +956,14 @@ export default class Canvas {
 
     private readonly _coroutineManager = new CoroutineManagerImpl();
 
+    get cursor() {
+        return this._canv.style.cursor ?? "default";
+    }
+
+    set cursor(value: string) {
+        this._canv.style.cursor = value;
+    }
+
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
         this._contextFactory = new CanvasFrameContextFactory(this._canv);
