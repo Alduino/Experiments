@@ -101,10 +101,16 @@ function drawPath(ctx: CanvasFrameContext, opts?: RenderOptions) {
         if (isFillOptions(opts) || isOutlineOptions(opts))
             console.warn("Render options are not required when inside path()");
     } else {
+        let hadRenderOptions = false;
+
         if (isFillOptions(opts)) {
+            hadRenderOptions = true;
             ctx.renderer.fillStyle = opts.fill;
             ctx.renderer.fill();
-        } else if (isOutlineOptions(opts)) {
+        }
+
+        if (isOutlineOptions(opts)) {
+            hadRenderOptions = true;
             ctx.renderer.strokeStyle = opts.colour;
             ctx.renderer.lineWidth = opts.thickness;
 
@@ -116,7 +122,9 @@ function drawPath(ctx: CanvasFrameContext, opts?: RenderOptions) {
             }
 
             ctx.renderer.stroke();
-        } else {
+        }
+
+        if (!hadRenderOptions) {
             throw new ReferenceError("Render options must be defined when outside path()");
         }
     }
