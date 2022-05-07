@@ -305,6 +305,7 @@ class CanvasFrameContextFactory {
 interface DefaultPrevented {
     mousedown: boolean;
     mouseup: boolean;
+    contextmenu: boolean;
     keydown: boolean;
     keyup: boolean;
 }
@@ -577,6 +578,19 @@ export const c = {
             shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mousePressed.left};
+            }
+        };
+    },
+
+    /**
+     * Waits until the right mouse button is pressed
+     */
+    rightMousePressed(): CoroutineAwait<void> {
+        return {
+            identifier: "c.rightMousePressed",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+                return {state: ctx.mousePressed.right};
             }
         };
     },
@@ -915,6 +929,7 @@ export default class Canvas {
     private _defaultPrevented: DefaultPrevented = {
         mousedown: false,
         mouseup: false,
+        contextmenu: false,
         keydown: false,
         keyup: false
     };
