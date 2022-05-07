@@ -1093,9 +1093,8 @@ export default class Canvas {
 
             const ctx = this._contextFactory.createContext();
             frame(ctx);
-            ctx.disposeListeners.forEach(listener => listener());
-
             this._coroutineManager.frame(ctx);
+            ctx.disposeListeners.forEach(listener => listener());
 
             this._contextFactory.postFrame();
         } catch (err) {
