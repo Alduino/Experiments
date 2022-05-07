@@ -1,25 +1,27 @@
-lockfileVersion: 5.3
+lockfileVersion: 5.4
 
 specifiers:
+  '@types/bezier-js': ^4.1.0
   '@types/node': ^14.17.2
   '@types/uuid': ^8.3.0
-  bezier-js: ^2.6.1
+  bezier-js: ^6.1.0
   bootstrap-icons: ^1.5.0
   itiriri: ^2.0.1
-  open-simplex-noise: ^2.5.0
+  open-simplex-noise: ^2.2.0
   parcel-bundler: ^1.12.5
-  sass: ^1.34.0
-  typescript: ^4.3.2
-  uuid: ^8.3.2
+  sass: ^1.24.0
+  typescript: ^4.0.5
+  uuid: ^8.3.1
 
 dependencies:
-  bezier-js: 2.6.1
+  bezier-js: 6.1.0
   bootstrap-icons: 1.5.0
   itiriri: 2.0.1
   open-simplex-noise: 2.5.0
   uuid: 8.3.2
 
 devDependencies:
+  '@types/bezier-js': 4.1.0
   '@types/node': 14.17.2
   '@types/uuid': 8.3.0
   parcel-bundler: 1.12.5
@@ -1148,6 +1150,10 @@ packages:
       physical-cpu-count: 2.0.0
     dev: true
 
+  /@types/bezier-js/4.1.0:
+    resolution: {integrity: sha512-ElU16s8E6Pr6magp8ihwH1O8pbUJASbMND/qgUc9RsLmP3lMLHiDMRXdjtaObwW5GPtOVYOsXDUIhTIluT+yaw==}
+    dev: true
+
   /@types/node/14.17.2:
     resolution: {integrity: sha512-sld7b/xmFum66AAKuz/rp/CUO8+98fMpyQ3SBfzzBNGMd/1iHBTAg9oyAvcYlAj46bpc74r91jSw2iFdnx29nw==}
     dev: true
@@ -1427,8 +1433,8 @@ packages:
       tweetnacl: 0.14.5
     dev: true
 
-  /bezier-js/2.6.1:
-    resolution: {integrity: sha512-jelZM33eNzcZ9snJ/5HqJLw3IzXvA8RFcBjkdOB8SDYyOvW8Y2tTosojAiBTnD1MhbHoWUYNbxUXxBl61TxbRg==}
+  /bezier-js/6.1.0:
+    resolution: {integrity: sha512-oc8fkHqG0R+dQuNiXVbPMB0cc8iDqkLAjbA2gq26QmV8tZqW9GGI7iNEX1ioRWlZperQS7v5BX03+9FLVWZbSw==}
     dev: false
 
   /binary-extensions/1.13.1:
@@ -1688,7 +1694,7 @@ packages:
 
   /chokidar/2.1.8:
     resolution: {integrity: sha512-ZmZUazfOzf0Nve7duiCKD23PFSCs4JPoYyccjUFF3aQkQadqBhfzhjkwBH2mNOG9cTBwhamM37EIsIkZw3nRgg==}
-    deprecated: Chokidar 2 will break on node v14+. Upgrade to chokidar 3 with 15x less dependencies.
+    deprecated: Chokidar 2 does not receive security updates since 2019. Upgrade to chokidar 3 with 15x fewer dependencies
     dependencies:
       anymatch: 2.0.0
       async-each: 1.0.3
@@ -2632,6 +2638,7 @@ packages:
     resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+    requiresBuild: true
     dev: true
     optional: true
 
@@ -3518,6 +3525,7 @@ packages:
 
   /nan/2.15.0:
     resolution: {integrity: sha512-8ZtvEnA2c5aYCZYd1cvgdnU6cqwixRoYg70xPLWUws5ORTa/lnw+u4amixRS/Ac5U5mQVgp9pnlSUnbNWFaWZQ==}
+    requiresBuild: true
     dev: true
     optional: true
 
