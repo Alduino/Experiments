@@ -30,7 +30,8 @@ export interface TextWithBackgroundOptions {
     padding: Vector2;
 }
 
-export interface RenderDisabledOptions {}
+export interface RenderDisabledOptions {
+}
 
 export interface PolygonOptions {
     radius: number;
@@ -44,7 +45,7 @@ interface BasicBezierOptions {
     end: Vector2;
 }
 
-export type BezierOptions<T> = BasicBezierOptions & {[opt in keyof T]: Vector2}
+export type BezierOptions<T> = BasicBezierOptions & { [opt in keyof T]: Vector2 }
 
 type RenderOptions = FillOptions | OutlineOptions | RenderDisabledOptions;
 
@@ -82,7 +83,7 @@ function isFillOptions(options: RenderOptions): options is FillOptions {
 
 function isOutlineOptions(options: RenderOptions): options is OutlineOptions {
     return typeof (options as OutlineOptions).thickness !== "undefined" &&
-           typeof (options as OutlineOptions).colour !== "undefined";
+        typeof (options as OutlineOptions).colour !== "undefined";
 }
 
 function isDashOutlineOptions(options: OutlineOptions): options is OutlineOptions & OutlineOptionsWithDash {
@@ -141,6 +142,22 @@ export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: Rend
     drawPath(ctx, opts);
 }
 
+export function roundedRectangle(ctx: CanvasFrameContext, a: Vector2, b: Vector2, radius: number, opts: RenderOptions) {
+    beginPath(ctx);
+
+    const size = a.subtract(b).abs();
+    const clampedRadius = Math.min(size.x / 2, size.y / 2, radius);
+
+    // https://stackoverflow.com/a/7838871
+    ctx.renderer.moveTo(a.x + clampedRadius, a.y);
+    ctx.renderer.arcTo(b.x, a.y, b.x, b.y, clampedRadius);
+    ctx.renderer.arcTo(b.x, b.y, a.x, b.y, clampedRadius);
+    ctx.renderer.arcTo(a.x, b.y, a.x, a.y, clampedRadius);
+    ctx.renderer.arcTo(a.x, a.y, b.x, a.y, clampedRadius);
+
+    drawPath(ctx, opts);
+}
+
 export function clear(ctx: CanvasFrameContext, a: Vector2 = new Vector2(), b: Vector2 = ctx.screenSize) {
     assertInPath(getImguiContext(ctx), false);
     ctx.renderer.clearRect(a.x, a.y, b.x, b.y);
@@ -174,14 +191,14 @@ export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: 
     }
 }
 
-export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{control}>) {
+export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{ control }>) {
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
     ctx.renderer.quadraticCurveTo(opts.control.x, opts.control.y, opts.end.x, opts.end.y);
     drawPath(ctx, opts);
 }
 
-export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{controlA, controlB}>) {
+export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{ controlA, controlB }>) {
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
     ctx.renderer.bezierCurveTo(opts.controlA.x, opts.controlA.y, opts.controlB.x, opts.controlB.y, opts.end.x, opts.end.y);
@@ -232,7 +249,7 @@ export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value:
     const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
     const rectSize = textSize.add(opts.padding.add(opts.padding));
 
-    rect(ctx, pos, pos.add(rectSize), opts.background);
+    roundedRectangle(ctx, pos, pos.add(rectSize), 3, opts.background);
     text(ctx, pos.add(opts.padding), value, opts.text);
 }
 

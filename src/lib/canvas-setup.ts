@@ -1,5 +1,5 @@
 import Vector2 from "./Vector2";
-import {textWithBackground, TextWithBackgroundOptions} from "./imgui";
+import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
 
 type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
 
@@ -957,6 +957,24 @@ export default class Canvas {
         return this._contextFactory.ctx;
     }
 
+    private static drawDebugLine(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", offsetY: number, name: string, message: string) {
+        const opts: TextWithBackgroundOptions = {
+            text: {font: "12px sans-serif", align: "left", fill: "white"},
+            background: {fill: "#0009"},
+            padding: new Vector2(4, 4)
+        };
+
+        const text = `${name}: ${message}`;
+        const {width: textWidth} = measureText(ctx, text, opts.text);
+
+        const xPos = corner.endsWith("r") ? ctx.screenSize.x - textWidth - 5 : 5;
+        const yPos = corner.startsWith("b") ? ctx.screenSize.y - offsetY - 20 : offsetY;
+
+        textWithBackground(ctx, new Vector2(xPos, yPos), text, opts);
+
+        return offsetY + 20;
+    }
+
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
         this._trigger = renderTrigger;
 
@@ -987,24 +1005,20 @@ export default class Canvas {
     }
 
     public drawDebug(ctx: CanvasFrameContext) {
-        let offsetTop = 5;
+        this.drawCustomDebug(ctx, "tl", {
+            FPS: `${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`,
+            M: ctx.mousePos.toString(),
+            D: ctx.disposeListeners.length.toFixed(0),
+            C: this._coroutineManager.size.toFixed(0),
+            CN: this._coroutineManager.identifiers.join(", ")
+        });
+    }
 
-        const opts: TextWithBackgroundOptions = {
-            text: {font: "12px sans-serif", align: "left", fill: "white"},
-            background: {fill: "gray"},
-            padding: new Vector2(4, 4)
-        };
-
-        textWithBackground(ctx, new Vector2(5, offsetTop), `FPS: ${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`, opts);
-        offsetTop += 20;
-
-        textWithBackground(ctx, new Vector2(5, offsetTop), `DI: ${ctx.disposeListeners.length} C: ${this._coroutineManager.size}`, opts);
-        offsetTop += 20;
-
-        const coroutineNames = this._coroutineManager.identifiers.join(", ");
-
-        textWithBackground(ctx, new Vector2(5, offsetTop), `CN: ${coroutineNames}`, opts);
-        offsetTop += 20;
+    public drawCustomDebug(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", messages: Record<string, string>) {
+        let offsetY = 5;
+        for (const [name, message] of Object.entries(messages)) {
+            offsetY = Canvas.drawDebugLine(ctx, corner, offsetY, name, message);
+        }
     }
 
     private handleFrame(frame: CanvasFrameRenderer) {
