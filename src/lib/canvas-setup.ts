@@ -310,9 +310,11 @@ interface DefaultPrevented {
     keyup: boolean;
 }
 
-type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? { state: true | "aborted" } : { state: true | "aborted", data: T };
+type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? { state: true | "aborted", checkCount?: number } : { state: true | "aborted", data: T, checkCount?: number };
 
-export type CoroutineAwaitResult<T> = CoroutineAwaitResult_Continue<T> | { state: false, data?: undefined };
+export type CoroutineAwaitResult<T> =
+    CoroutineAwaitResult_Continue<T>
+    | { state: false, data?: undefined, checkCount?: number };
 
 interface CoroutineAwaitBase<T> {
     /**
@@ -507,6 +509,10 @@ export const c = {
                 }
 
                 const result = handler(results);
+
+                if (typeof result.checkCount === "undefined") {
+                    result.checkCount = results.reduce((total, res) => total + (res.checkCount ?? 1), 0);
+                }
 
                 if (result.state) {
                     for (const coroutineAwaiter of coroutineAwaiters) {
@@ -763,6 +769,8 @@ type CoroutineGeneratorFunction = (signal: AbortSignal) => GeneratorType;
 class CoroutineManagerImpl implements CoroutineManager {
     private readonly _coroutines = new Set<StatefulCoroutine>();
     private incr = 0;
+    private checkCount = 0;
+    private lastCheckCount = 0;
 
     get size() {
         return this._coroutines.size;
@@ -772,7 +780,14 @@ class CoroutineManagerImpl implements CoroutineManager {
         return Array.from(this._coroutines).map(item => item.identifier);
     }
 
+    getLastCheckCount() {
+        return this.lastCheckCount;
+    }
+
     frame(ctx: CanvasFrameContext) {
+        this.lastCheckCount = this.checkCount;
+        this.checkCount = 0;
+
         for (const state of this._coroutines) {
             if (state.rootCheckDisabled) continue;
             this.handleCoroutine(ctx, state);
@@ -870,8 +885,11 @@ class CoroutineManagerImpl implements CoroutineManager {
         try {
             const {
                 state: shouldContinue,
-                data
+                data,
+                checkCount = 1
             } = state.lastResult?.shouldContinue(ctx, state.abortSignal) ?? {state: true};
+
+            this.checkCount += checkCount;
 
             if (shouldContinue) {
                 const aborted = shouldContinue === "aborted";
@@ -1042,6 +1060,7 @@ export default class Canvas {
             M: ctx.mousePos.toString(),
             D: ctx.disposeListeners.length.toFixed(0),
             _C: this._coroutineManager.size.toFixed(0),
+            _SC: this._coroutineManager.getLastCheckCount().toFixed(0),
             CN: this._coroutineManager.identifiers.join(", ")
         });
     }
