@@ -1029,6 +1029,11 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 }
 
+interface CursorStackItem {
+    index: number;
+    cursor: string;
+}
+
 export default class Canvas {
     private readonly _canv: HTMLCanvasElement;
 
@@ -1048,6 +1053,7 @@ export default class Canvas {
     private _defaultKeysPrevented: KeyState = new KeyState();
 
     private readonly _coroutineManager = new CoroutineManagerImpl();
+    private readonly cursorStack: CursorStackItem[] = [];
 
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
@@ -1083,6 +1089,9 @@ export default class Canvas {
         return this._canv.style.cursor ?? "default";
     }
 
+    /**
+     * Sets the cursor on the canvas. Overwrites the cursor stack, until the stack changes.
+     */
     set cursor(value: string) {
         this._canv.style.cursor = value;
     }
@@ -1188,6 +1197,36 @@ export default class Canvas {
         }
     }
 
+    /**
+     * Pushes a cursor onto the cursor stack for the canvas to use, until something else pushes a new cursor,
+     * or you pull this cursor off the stack.
+     * @param cursor The CSS name of the cursor.
+     * @returns The function that pulls the cursor off the stack.
+     */
+    pushCursor(cursor: string): () => void {
+        const index = this.cursorStack.length;
+
+        const item: CursorStackItem = {
+            index, cursor
+        };
+
+        this.cursorStack.push(item);
+        this.updateCursorFromStack();
+
+        return () => {
+            this.deleteCursorStackItem(item.index);
+            this.updateCursorFromStack();
+        };
+    }
+
+    private deleteCursorStackItem(index: number) {
+        this.cursorStack.splice(index, 1);
+
+        for (const item of this.cursorStack.slice(index)) {
+            item.index--;
+        }
+    }
+
     private handleFrame(frame: CanvasFrameRenderer) {
         try {
             this._contextFactory.preFrame();
@@ -1226,5 +1265,9 @@ export default class Canvas {
 
     private maybePreventKey(ev: KeyboardEvent) {
         if (this._defaultKeysPrevented.get(ev.key)) ev.preventDefault();
+    }
+
+    private updateCursorFromStack() {
+        this.cursor = this.cursorStack[0]?.cursor ?? "default";
     }
 }
