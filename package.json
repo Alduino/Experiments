@@ -9,6 +9,7 @@
   "browserslist": [
     "last 3 Firefox versions"
   ],
+  "packageManager": "pnpm@7.1.5",
   "devDependencies": {
     "@parcel/transformer-sass": "^2.5.0",
     "@types/bezier-js": "^4.1.0",
