@@ -863,6 +863,15 @@ interface StatefulCoroutine {
 
 type CoroutineGeneratorFunction = (signal: AbortSignal) => GeneratorType;
 
+function getCoroutineName(baseName: string) {
+    if (/handle[A-Z]/.test(baseName)) {
+        const name = baseName.substring("handle".length);
+        return name[0].toLowerCase() + name.substring(1);
+    }
+
+    return name;
+}
+
 class CoroutineManagerImpl implements CoroutineManager {
     private readonly _coroutines = new Set<StatefulCoroutine>();
     private incr = 0;
@@ -892,7 +901,7 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 
     startCoroutine(identifier_fn: string | CoroutineGeneratorFunction, fn_opt?: CoroutineGeneratorFunction): StartCoroutineResult {
-        const identifier = typeof identifier_fn === "string" ? identifier_fn : identifier_fn.name || `unq_${++this.incr}`;
+        const identifier = typeof identifier_fn === "string" ? identifier_fn : getCoroutineName(identifier_fn.name) || `unq_${++this.incr}`;
         const fn = typeof identifier_fn === "function" ? identifier_fn : fn_opt;
 
         let isComplete = false;
