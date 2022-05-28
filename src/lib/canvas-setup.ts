@@ -1059,6 +1059,7 @@ export default class Canvas {
 
     private readonly _coroutineManager = new CoroutineManagerImpl();
     private readonly cursorStack: CursorStackItem[] = [];
+    private cursorUpdateSchedule = 0;
 
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
@@ -1216,11 +1217,11 @@ export default class Canvas {
         };
 
         this.cursorStack.push(item);
-        this.updateCursorFromStack();
+        this.scheduleUrgentCursorUpdate();
 
         return () => {
             this.deleteCursorStackItem(item.index);
-            this.updateCursorFromStack();
+            this.scheduleNonUrgentCursorUpdate();
         };
     }
 
@@ -1240,6 +1241,14 @@ export default class Canvas {
             frame(ctx);
             this._coroutineManager.frame(ctx);
             ctx.disposeListeners.forEach(listener => listener());
+
+            if (this.cursorUpdateSchedule === 1) {
+                this.updateCursorFromStack();
+            }
+
+            if (this.cursorUpdateSchedule) {
+                this.cursorUpdateSchedule--;
+            }
 
             this._contextFactory.postFrame();
         } catch (err) {
@@ -1272,7 +1281,34 @@ export default class Canvas {
         if (this._defaultKeysPrevented.get(ev.key)) ev.preventDefault();
     }
 
+    /**
+     * Synchronously updates the cursor to be the latest on the stack.
+     * Don't use this method—use one of the asynchronous methods instead.
+     */
     private updateCursorFromStack() {
         this.cursor = this.cursorStack[0]?.cursor ?? "default";
+    }
+
+    /**
+     * Schedules the cursor to update on the next fram
+     */
+    private scheduleUrgentCursorUpdate() {
+        this.scheduleCursorUpdate(0);
+    }
+
+    /**
+     * Schedules the cursor to update in a few frames
+     */
+    private scheduleNonUrgentCursorUpdate() {
+        this.scheduleCursorUpdate(2);
+    }
+
+    /**
+     * Schedules the cursor to update in the specified number of frames.
+     * Cursor updates always align with a frame.
+     */
+    private scheduleCursorUpdate(frames: number) {
+        if (!this.cursorUpdateSchedule) this.cursorUpdateSchedule = frames + 1;
+        else this.cursorUpdateSchedule = Math.min(this.cursorUpdateSchedule, frames + 1);
     }
 }
