@@ -310,14 +310,14 @@ interface DefaultPrevented {
     keyup: boolean;
 }
 
-interface Collider {
+export interface Collider {
     /**
      * Returns the closest signed distance to the shape from the point
      */
     getSignedDistance(point: Vector2): number;
 }
 
-class RectangleCollider implements Collider {
+export class RectangleCollider implements Collider {
     constructor(public readonly tl: Vector2, public readonly br: Vector2) {
     }
 
@@ -467,7 +467,7 @@ export interface CoroutineContext {
     data: unknown;
 }
 
-type GeneratorType = Generator<CoroutineAwait<unknown>, void, CoroutineContext>;
+type GeneratorType = Generator<CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult, void, CoroutineContext>;
 
 export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
 export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
@@ -475,8 +475,7 @@ export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: n
 /**
  * Various coroutine awaiters
  *
- * @remarks
- * You can also make your own awaiter - it just needs to be some function that returns a `CoroutineAwait`.
+ * @remarks You can also make your own awaiter - it just needs to be some function that returns a `CoroutineAwait`.
  */
 export const c = {
     /**
@@ -798,6 +797,13 @@ interface StartCoroutineResult {
     abortController: AbortController;
 }
 
+function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
+    if (!test || typeof test !== "object") return false;
+
+    const casted = test as StartCoroutineResult;
+    return casted.abortController instanceof AbortController && typeof casted.awaiter === "object";
+}
+
 export interface CoroutineManager {
     /**
      * Begins a new coroutine. Code runs before each frame is rendered.
@@ -984,7 +990,16 @@ class CoroutineManagerImpl implements CoroutineManager {
                 try {
                     const res = state.coroutine.next({ctx, aborted, data});
                     done = res.done;
-                    value = res.value;
+
+                    const result = res.value;
+
+                    if (typeof result === "function") {
+                        value = this.startCoroutine(result).awaiter;
+                    } else if (isStartCoroutineResult(result)) {
+                        value = result.awaiter;
+                    } else {
+                        value = result;
+                    }
                 } finally {
                     if (state.lastResult) {
                         state.traces.splice(0, state.traceShiftCount);
