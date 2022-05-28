@@ -459,7 +459,18 @@ export interface CoroutineContext {
     data: unknown;
 }
 
-type GeneratorType = Generator<CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult, void, CoroutineContext>;
+type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
+type GeneratorType = Generator<AwaiterCastable, void, CoroutineContext>;
+
+function getAwaiter(awaiterCastable: AwaiterCastable) {
+    if (typeof awaiterCastable === "function") {
+        return this.startCoroutine(awaiterCastable).awaiter;
+    } else if (isStartCoroutineResult(awaiterCastable)) {
+        return awaiterCastable.awaiter;
+    } else {
+        return awaiterCastable;
+    }
+}
 
 export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
 export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
@@ -482,13 +493,15 @@ export const c = {
      * @param handler - Function that takes in the results, in order of passing, and reduces them down to a single one. Called every frame.
      * @param errorHandler - Called when a child awaiter throws an error, similar to `catch`. Return a result if it was handled, or false to propagate the error up.
      */
-    nest<T>(identifier: string, awaiters: CoroutineAwait<unknown>[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
+    nest<T>(identifier: string, awaiters: AwaiterCastable[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
         if (awaiters.length === 0) throw new Error("Must have at least one awaiter");
 
         const coroutineAwaiters = new Set<StartCoroutineAwait>();
         let traces: string[] = [];
 
-        for (const awaiter of awaiters) {
+        for (const awaiterCastable of awaiters) {
+            const awaiter = getAwaiter(awaiterCastable);
+
             if (isStartCoroutineAwait(awaiter)) {
                 awaiter.cancelRootCheck();
                 coroutineAwaiters.add(awaiter);
@@ -507,7 +520,7 @@ export const c = {
                 let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
                 try {
                     for (let i = 0; i < awaiters.length; i++) {
-                        const awaiter = awaiters[i];
+                        const awaiter = getAwaiter(awaiters[i]);
                         lastTraceAwaiter = awaiter;
                         lastTraceIndex = i;
                         results[i] = awaiter.shouldContinue(ctx, signal);
@@ -557,7 +570,7 @@ export const c = {
      * - If two complete at the same time, will pick the first one passed
      * - If the passed signal is aborted, will return with data `-1`
      */
-    waitForFirst(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
+    waitForFirst(awaiters: AwaiterCastable[], signal?: AbortSignal): CoroutineAwait<number> {
         return this.nest("c.waitForFirst", awaiters, results => {
             if (signal?.aborted) return {state: "aborted", data: -1};
 
@@ -983,15 +996,7 @@ class CoroutineManagerImpl implements CoroutineManager {
                     const res = state.coroutine.next({ctx, aborted, data});
                     done = res.done;
 
-                    const result = res.value;
-
-                    if (typeof result === "function") {
-                        value = this.startCoroutine(result).awaiter;
-                    } else if (isStartCoroutineResult(result)) {
-                        value = result.awaiter;
-                    } else {
-                        value = result;
-                    }
+                    value = res.value ? getAwaiter(res.value) : undefined;
                 } finally {
                     if (state.lastResult) {
                         state.traces.splice(0, state.traceShiftCount);
