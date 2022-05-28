@@ -1,5 +1,6 @@
 import Vector2 from "./Vector2";
 import Canvas, {CanvasFrameContext} from "./canvas-setup";
+import QuickLRU from "quick-lru";
 
 export type FillType = string | CanvasGradient;
 
@@ -7,11 +8,17 @@ export interface FillOptions {
     fill: FillType;
 }
 
-export interface OutlineOptions {
+interface OutlineOptionsWithoutDash {
     colour: FillType;
     thickness: number;
-    dash?: [number, number];
 }
+
+interface OutlineOptionsWithDash {
+    dash: number[];
+    dashOffset?: number;
+}
+
+export type OutlineOptions = OutlineOptionsWithoutDash | (OutlineOptionsWithoutDash & OutlineOptionsWithDash);
 
 export interface TextOptions {
     font: string;
@@ -24,7 +31,8 @@ export interface TextWithBackgroundOptions {
     padding: Vector2;
 }
 
-export interface RenderDisabledOptions {}
+export interface RenderDisabledOptions {
+}
 
 export interface PolygonOptions {
     radius: number;
@@ -38,7 +46,7 @@ interface BasicBezierOptions {
     end: Vector2;
 }
 
-export type BezierOptions<T> = BasicBezierOptions & {[opt in keyof T]: Vector2}
+export type BezierOptions<T> = BasicBezierOptions & { [opt in keyof T]: Vector2 }
 
 type RenderOptions = FillOptions | OutlineOptions | RenderDisabledOptions;
 
@@ -76,7 +84,11 @@ function isFillOptions(options: RenderOptions): options is FillOptions {
 
 function isOutlineOptions(options: RenderOptions): options is OutlineOptions {
     return typeof (options as OutlineOptions).thickness !== "undefined" &&
-           typeof (options as OutlineOptions).colour !== "undefined";
+        typeof (options as OutlineOptions).colour !== "undefined";
+}
+
+function isDashOutlineOptions(options: OutlineOptions): options is OutlineOptions & OutlineOptionsWithDash {
+    return Array.isArray((options as OutlineOptionsWithDash).dash);
 }
 
 function beginPath(ctx: CanvasFrameContext) {
@@ -90,15 +102,30 @@ function drawPath(ctx: CanvasFrameContext, opts?: RenderOptions) {
         if (isFillOptions(opts) || isOutlineOptions(opts))
             console.warn("Render options are not required when inside path()");
     } else {
+        let hadRenderOptions = false;
+
         if (isFillOptions(opts)) {
+            hadRenderOptions = true;
             ctx.renderer.fillStyle = opts.fill;
             ctx.renderer.fill();
-        } else if (isOutlineOptions(opts)) {
+        }
+
+        if (isOutlineOptions(opts)) {
+            hadRenderOptions = true;
             ctx.renderer.strokeStyle = opts.colour;
             ctx.renderer.lineWidth = opts.thickness;
-            ctx.renderer.setLineDash(opts.dash || []);
+
+            if (isDashOutlineOptions(opts)) {
+                ctx.renderer.setLineDash(opts.dash);
+                ctx.renderer.lineDashOffset = opts.dashOffset || 0;
+            } else {
+                ctx.renderer.setLineDash([]);
+            }
+
             ctx.renderer.stroke();
-        } else {
+        }
+
+        if (!hadRenderOptions) {
             throw new ReferenceError("Render options must be defined when outside path()");
         }
     }
@@ -121,6 +148,22 @@ function moveWhenNotInPath(ctx: CanvasFrameContext, pos: Vector2 | undefined, ar
 export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: RenderOptions) {
     beginPath(ctx);
     ctx.renderer.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    drawPath(ctx, opts);
+}
+
+export function roundedRectangle(ctx: CanvasFrameContext, a: Vector2, b: Vector2, radius: number, opts: RenderOptions) {
+    beginPath(ctx);
+
+    const size = a.subtract(b).abs();
+    const clampedRadius = Math.min(size.x / 2, size.y / 2, radius);
+
+    // https://stackoverflow.com/a/7838871
+    ctx.renderer.moveTo(a.x + clampedRadius, a.y);
+    ctx.renderer.arcTo(b.x, a.y, b.x, b.y, clampedRadius);
+    ctx.renderer.arcTo(b.x, b.y, a.x, b.y, clampedRadius);
+    ctx.renderer.arcTo(a.x, b.y, a.x, a.y, clampedRadius);
+    ctx.renderer.arcTo(a.x, a.y, b.x, a.y, clampedRadius);
+
     drawPath(ctx, opts);
 }
 
@@ -157,23 +200,14 @@ export function text(ctx: CanvasFrameContext, pos: Vector2, text: string, opts: 
     }
 }
 
-export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
-    const textMeasurement = measureText(ctx, value, opts.text);
-    const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
-    const rectSize = textSize.add(opts.padding.add(opts.padding));
-
-    rect(ctx, pos, pos.add(rectSize), opts.background);
-    text(ctx, pos.add(opts.padding), value, opts.text);
-}
-
-export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{control}>) {
+export function quadraticCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{ control }>) {
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
     ctx.renderer.quadraticCurveTo(opts.control.x, opts.control.y, opts.end.x, opts.end.y);
     drawPath(ctx, opts);
 }
 
-export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{controlA, controlB}>) {
+export function cubicCurve(ctx: CanvasFrameContext, opts: RenderOptions & BezierOptions<{ controlA, controlB }>) {
     beginPath(ctx);
     moveWhenNotInPath(ctx, opts.start, "start");
     ctx.renderer.bezierCurveTo(opts.controlA.x, opts.controlA.y, opts.controlB.x, opts.controlB.y, opts.end.x, opts.end.y);
@@ -219,6 +253,15 @@ export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
 
 ///--- COMPOSITE SHAPES ---\\\
 
+export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
+    const textMeasurement = measureText(ctx, value, opts.text);
+    const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
+    const rectSize = textSize.add(opts.padding.add(opts.padding));
+
+    roundedRectangle(ctx, pos, pos.add(rectSize), 3, opts.background);
+    text(ctx, pos.add(opts.padding), value, opts.text);
+}
+
 export function circle(ctx: CanvasFrameContext, centre: Vector2, radius: number, opts: RenderOptions) {
     arc(ctx, centre, radius, 0, Math.PI * 2, false, opts);
 }
@@ -249,7 +292,7 @@ interface Stop {
     colour: string;
 }
 
-const gradientCache: Map<CanvasRenderingContext2D, Map<string, CanvasGradient>> = new Map();
+const gradientCache: Map<CanvasRenderingContext2D, QuickLRU<string, CanvasGradient>> = new Map();
 
 function createGradientHash(type: string, start: Vector2, end: Vector2, stops: Stop[]) {
     return `${type}_${start}_${end}_${stops.map(stop => `${stop.time}_${stop.colour}`).join(",")}`;
@@ -258,13 +301,38 @@ function createGradientHash(type: string, start: Vector2, end: Vector2, stops: S
 export function linearGradient(ctx: CanvasFrameContext, start: Vector2, end: Vector2, stops: Stop[]) {
     const hash = createGradientHash("linear", start, end, stops);
 
-    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new Map());
+    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new QuickLRU({
+        maxSize: 200
+    }));
+
     const gradientCacheMap = gradientCache.get(ctx.renderer);
     if (gradientCacheMap.has(hash)) {
         return gradientCacheMap.get(hash);
     }
 
     const gradient = ctx.renderer.createLinearGradient(start.x, start.y, end.x, end.y);
+
+    for (const stop of stops) {
+        gradient.addColorStop(stop.time, stop.colour);
+    }
+
+    gradientCacheMap.set(hash, gradient);
+    return gradient;
+}
+
+export function radialGradient(ctx: CanvasFrameContext, start: Vector2, startRadius: number, end: Vector2, endRadius: number, stops: Stop[]) {
+    const hash = createGradientHash("radial", start, end, stops);
+
+    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new QuickLRU({
+        maxSize: 200
+    }));
+
+    const gradientCacheMap = gradientCache.get(ctx.renderer);
+    if (gradientCacheMap.has(hash)) {
+        return gradientCacheMap.get(hash);
+    }
+
+    const gradient = ctx.renderer.createRadialGradient(start.x, start.y, startRadius, end.x, end.y, endRadius);
 
     for (const stop of stops) {
         gradient.addColorStop(stop.time, stop.colour);

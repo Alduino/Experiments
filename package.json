@@ -6,18 +6,28 @@
     "start": "cp -rf public dist && parcel src/*.html",
     "build": "cp -rf public dist && parcel build src/*.html"
   },
+  "browserslist": [
+    "last 3 Firefox versions"
+  ],
+  "packageManager": "pnpm@7.1.5",
   "devDependencies": {
-    "@types/node": "^14.14.6",
+    "@parcel/core": "^2.6.0",
+    "@parcel/transformer-sass": "^2.6.0",
+    "@types/bezier-js": "^4.1.0",
+    "@types/node": "^14.17.2",
     "@types/uuid": "^8.3.0",
-    "parcel-bundler": "^1.12.5",
+    "parcel": "^2.6.0",
     "sass": "^1.24.0",
     "typescript": "^4.0.5"
   },
   "dependencies": {
-    "bezier-js": "^2.5.1",
+    "@fontsource/montserrat": "^4.5.10",
+    "bezier-js": "^6.1.0",
     "bootstrap-icons": "^1.5.0",
+    "colord": "^2.9.2",
     "itiriri": "^2.0.1",
     "open-simplex-noise": "^2.2.0",
+    "quick-lru": "^6.1.1",
     "uuid": "^8.3.1"
   }
 }

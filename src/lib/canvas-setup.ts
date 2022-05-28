@@ -1,5 +1,5 @@
 import Vector2 from "./Vector2";
-import {textWithBackground, TextWithBackgroundOptions} from "./imgui";
+import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
 
 type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
 
@@ -32,21 +32,15 @@ class MouseState {
 }
 
 class KeyState {
+    private readonly _keys: { [key: string]: boolean } = {};
+
     static fromEntries(entries: [string, boolean][]): KeyState {
         const newState = new KeyState();
 
         for (const [key, state] of entries) {
-            newState[key] = state;
+            newState._keys[key] = state;
         }
 
-        return newState;
-    }
-
-    private readonly _keys: {[key: string]: boolean} = {};
-
-    private clone() {
-        const newState = new KeyState();
-        Object.assign(newState._keys, this._keys);
         return newState;
     }
 
@@ -62,6 +56,16 @@ class KeyState {
 
     entries(): [string, boolean][] {
         return Object.entries(this._keys);
+    }
+
+    getActive(): string[] {
+        return this.entries().filter(v => v[1]).map(v => v[0]);
+    }
+
+    private clone() {
+        const newState = new KeyState();
+        Object.assign(newState._keys, this._keys);
+        return newState;
     }
 }
 
@@ -91,6 +95,11 @@ export interface CanvasFrameContext {
      * The amount of seconds since the last frame
      */
     deltaTime: number;
+
+    /**
+     * A number that counts seconds
+     */
+    time: number;
 
     /**
      * The current FPS with no smoothing
@@ -154,6 +163,33 @@ export interface CanvasFrameContext {
 }
 
 class CanvasFrameContextFactory {
+    private _previousFrameTime: number = -1;
+    private _currentFrameTime: number = -1;
+    private _mouseState: MouseState = new MouseState(false, false, false);
+    private _previousMouseState: MouseState = this._mouseState;
+    private _keyState: KeyState = new KeyState();
+    private _previousKeyState: KeyState = this._keyState;
+    private _mousePos: Vector2 = new Vector2();
+    private _previousMousePos: Vector2 = this._mousePos;
+    private readonly _canv: HTMLCanvasElement;
+    private readonly _ctx: CanvasRenderingContext2D;
+    private readonly _startTime = performance.now() / 1000;
+
+    constructor(canv: HTMLCanvasElement) {
+        this._canv = canv;
+        this._ctx = canv.getContext("2d");
+
+        canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
+        canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
+        canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
+        canv.addEventListener("keydown", this.handleKeyChange.bind(this, true));
+        canv.addEventListener("keyup", this.handleKeyChange.bind(this, false));
+    }
+
+    public get ctx() {
+        return this._ctx;
+    }
+
     private static risingEdgeMouse(curr: MouseState, prev: MouseState): MouseState {
         return new MouseState(
             curr.left && !prev.left,
@@ -176,68 +212,12 @@ class CanvasFrameContextFactory {
                 .map(([key, state]) => [key, state && !prev.get(key)])
         );
     }
+
     private static fallingEdgeKeys(curr: KeyState, prev: KeyState): KeyState {
         return KeyState.fromEntries(
             curr.entries()
                 .map(([key, state]) => [key, !state && prev.get(key)])
         );
-    }
-
-    private _previousFrameTime: number = -1;
-    private _currentFrameTime: number = -1;
-
-    private _mouseState: MouseState = new MouseState(false, false, false);
-    private _previousMouseState: MouseState = this._mouseState;
-
-    private _keyState: KeyState = new KeyState();
-    private _previousKeyState: KeyState = this._keyState;
-
-    private _mousePos: Vector2 = new Vector2();
-    private _previousMousePos: Vector2 = this._mousePos;
-
-    private readonly _canv: HTMLCanvasElement;
-    private readonly _ctx: CanvasRenderingContext2D;
-
-    private handleMouseDown(ev: MouseEvent) {
-        switch (ev.button) {
-            case 0: this._mouseState = this._mouseState.withLeft(true); break;
-            case 1: this._mouseState = this._mouseState.withMid(true); break;
-            case 2: this._mouseState = this._mouseState.withRight(true); break;
-        }
-    }
-
-    private handleMouseUp(ev: MouseEvent) {
-        switch (ev.button) {
-            case 0: this._mouseState = this._mouseState.withLeft(false); break;
-            case 1: this._mouseState = this._mouseState.withMid(false); break;
-            case 2: this._mouseState = this._mouseState.withRight(false); break;
-        }
-    }
-
-    private handleMouseMove(ev: MouseEvent) {
-        const canvasOffset = this._canv.getBoundingClientRect();
-        const mousePagePos = new Vector2(ev.pageX, ev.pageY);
-        const offset = new Vector2(canvasOffset.left, canvasOffset.top);
-        this._mousePos = mousePagePos.subtract(offset);
-    }
-
-    private handleKeyChange(state: boolean, ev: KeyboardEvent) {
-        this._keyState = this._keyState.with(ev.key, state);
-    }
-
-    public get ctx() {
-        return this._ctx;
-    }
-
-    constructor(canv: HTMLCanvasElement) {
-        this._canv = canv;
-        this._ctx = canv.getContext("2d");
-
-        canv.addEventListener("mousedown", this.handleMouseDown.bind(this));
-        canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
-        canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
-        canv.addEventListener("keydown", this.handleKeyChange.bind(this, true));
-        canv.addEventListener("keyup", this.handleKeyChange.bind(this, false));
     }
 
     preFrame() {
@@ -261,6 +241,7 @@ class CanvasFrameContextFactory {
         return {
             renderer: this._ctx,
 
+            time: performance.now() / 1000 - this._startTime,
             deltaTime: deltaTime,
             fps: 1 / deltaTime,
 
@@ -280,21 +261,97 @@ class CanvasFrameContextFactory {
             disposeListeners: []
         };
     }
+
+    private handleMouseDown(ev: MouseEvent) {
+        switch (ev.button) {
+            case 0:
+                this._mouseState = this._mouseState.withLeft(true);
+                break;
+            case 1:
+                this._mouseState = this._mouseState.withMid(true);
+                break;
+            case 2:
+                this._mouseState = this._mouseState.withRight(true);
+                break;
+        }
+    }
+
+    private handleMouseUp(ev: MouseEvent) {
+        switch (ev.button) {
+            case 0:
+                this._mouseState = this._mouseState.withLeft(false);
+                break;
+            case 1:
+                this._mouseState = this._mouseState.withMid(false);
+                break;
+            case 2:
+                this._mouseState = this._mouseState.withRight(false);
+                break;
+        }
+    }
+
+    private handleMouseMove(ev: MouseEvent) {
+        const canvasOffset = this._canv.getBoundingClientRect();
+        const mousePagePos = new Vector2(ev.pageX, ev.pageY);
+        const offset = new Vector2(canvasOffset.left, canvasOffset.top);
+        this._mousePos = mousePagePos.subtract(offset);
+    }
+
+    private handleKeyChange(state: boolean, ev: KeyboardEvent) {
+        this._keyState = this._keyState.with(ev.key, state);
+    }
 }
 
 interface DefaultPrevented {
     mousedown: boolean;
     mouseup: boolean;
+    contextmenu: boolean;
     keydown: boolean;
     keyup: boolean;
 }
 
-type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? {state: true | "aborted"} : {state: true | "aborted", data: T};
+export interface Collider {
+    /**
+     * Returns the closest signed distance to the shape from the point
+     */
+    getSignedDistance(point: Vector2): number;
+}
 
-export type CoroutineAwaitResult<T> = CoroutineAwaitResult_Continue<T> | {state: false, data?: undefined};
+export class RectangleCollider implements Collider {
+    constructor(public readonly tl: Vector2, public readonly br: Vector2) {
+    }
 
-export interface CoroutineAwait<T> {
+    getSignedDistance(point: Vector2): number {
+        const halfSize = this.br.subtract(this.tl).divide(2);
+        const samplePosition = point.subtract(this.tl).subtract(halfSize);
+
+        // based on https://www.ronja-tutorials.com/post/034-2d-sdf-basics/#rectangle
+        const componentWiseEdgeDistance = samplePosition.abs().subtract(halfSize);
+
+        const outsideDistance = Vector2.max(componentWiseEdgeDistance, Vector2.zero).length();
+        const insideDistance = Math.min(Math.max(componentWiseEdgeDistance.x, componentWiseEdgeDistance.y), 0);
+
+        return outsideDistance + insideDistance;
+    }
+
+}
+
+type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? { state: true | "aborted", checkCount?: number } : { state: true | "aborted", data: T, checkCount?: number };
+
+export type CoroutineAwaitResult<T> =
+    CoroutineAwaitResult_Continue<T>
+    | { state: false, data?: undefined, checkCount?: number };
+
+interface CoroutineAwaitBase<T> {
+    /**
+     * Remember to `yield` this call! You may get unexpected bugs if you don't.
+     */
     DID_YOU_FORGET_YIELD?: never;
+
+    /**
+     * Identifies the awaiter, used for debugging
+     */
+    identifier: string;
 
     /**
      * Return true to complete this awaiter and exit the yield, or false to keep waiting.
@@ -303,10 +360,53 @@ export interface CoroutineAwait<T> {
      * This function is called every frame, with that frame's context. As it is in the hot path, it should
      * ideally be well optimised and run fast.
      */
-    shouldContinue(ctx: CanvasFrameContext): CoroutineAwaitResult<T>;
+    shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T>;
 }
 
-interface StartCoroutineAwait extends CoroutineAwait<void> {
+interface NormalCoroutineAwait<T> extends CoroutineAwaitBase<T> {
+    /**
+     * If this is a promise, this awaiter (and its coroutine) will not be evaluated until it resolves. Promise rejection
+     * will not be handled.
+     *
+     * You can use this if you know `shouldContinue()` will return `false` until the promise resolves, as an
+     * optimisation if your awaiter is slow (`shouldContinue()` will not be called until the promise resolves).
+     */
+    delay?: Promise<void>;
+
+    /**
+     * Called when the awaiter is first called, but from the manager instead of the user.
+     */
+    init?(signal: AbortSignal): void;
+
+    /**
+     * Called after the awaiter is last used
+     */
+    uninit?(): void;
+}
+
+interface NestCoroutineAwait<T> extends CoroutineAwaitBase<T> {
+    isNestAwait: true;
+
+    delay?: never;
+
+    /**
+     * Called when the awaiter is first called, with that coroutine's traces as the parameter
+     */
+    init?(traces: string[]): void;
+
+    /**
+     * Called after the awaiter is last used
+     */
+    uninit?(): void;
+}
+
+export type CoroutineAwait<T> = NormalCoroutineAwait<T> | NestCoroutineAwait<T>;
+
+function isNestCoroutineAwait<T>(awaiter: CoroutineAwait<T>): awaiter is NestCoroutineAwait<T> {
+    return (awaiter as NestCoroutineAwait<T>).isNestAwait === true;
+}
+
+interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     // Used for nested coroutines, stops it accepting updates from the root controller, so that they can be controlled
     // by whatever nested them.
     cancelRootCheck(): void;
@@ -314,6 +414,27 @@ interface StartCoroutineAwait extends CoroutineAwait<void> {
     // Used for nested coroutines, cancels this coroutine and forces its function to return.
     // Note that a coroutine can only be disposed where a `yield` is.
     dispose();
+
+    /**
+     * Adds some traces to the end of the coroutine's traces, used to show where an error came from
+     */
+    pushTraces(traces: string[]): void;
+
+    /**
+     * Adds some traces to the start of the coroutine's traces, used to show where an error came from
+     * @param traces
+     */
+    addTraces(traces: string[]): void;
+
+    /**
+     * Removes the top N traces
+     */
+    removeTraces(count: number): void;
+
+    /**
+     * Returns all the traces
+     */
+    getTraces(): readonly string[];
 }
 
 function isStartCoroutineAwait(v: CoroutineAwait<void>): v is StartCoroutineAwait {
@@ -321,7 +442,7 @@ function isStartCoroutineAwait(v: CoroutineAwait<void>): v is StartCoroutineAwai
     return typeof (v as StartCoroutineAwait).cancelRootCheck === "function";
 }
 
-interface CoroutineContext {
+export interface CoroutineContext {
     /**
      * The context of the next frame that will be rendered
      */
@@ -338,15 +459,26 @@ interface CoroutineContext {
     data: unknown;
 }
 
-type GeneratorType = Generator<CoroutineAwait<unknown>, void, CoroutineContext>;
+type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
+type GeneratorType = Generator<AwaiterCastable, void, CoroutineContext>;
 
-export type NestHandler = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<unknown>;
+function getAwaiter(awaiterCastable: AwaiterCastable) {
+    if (typeof awaiterCastable === "function") {
+        return this.startCoroutine(awaiterCastable).awaiter;
+    } else if (isStartCoroutineResult(awaiterCastable)) {
+        return awaiterCastable.awaiter;
+    } else {
+        return awaiterCastable;
+    }
+}
+
+export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
+export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
 
 /**
  * Various coroutine awaiters
  *
- * @remarks
- * You can also make your own awaiter - it just needs to be some function that returns a `CoroutineAwait`.
+ * @remarks You can also make your own awaiter - it just needs to be some function that returns a `CoroutineAwait`.
  */
 export const c = {
     /**
@@ -356,13 +488,20 @@ export const c = {
      * function MUST be used for situations where a nested coroutine is possible (like waitForFirst, waitForAll etc),
      * as it can handle edge cases with coroutine awaiters that cannot be handled in third party code.
      *
+     * @param identifier - Identifies the awaiter, used for debugging
      * @param awaiters - List of awaiters to handle
      * @param handler - Function that takes in the results, in order of passing, and reduces them down to a single one. Called every frame.
+     * @param errorHandler - Called when a child awaiter throws an error, similar to `catch`. Return a result if it was handled, or false to propagate the error up.
      */
-    nest(awaiters: CoroutineAwait<unknown>[], handler: NestHandler): CoroutineAwait<unknown> {
-        const coroutineAwaiters = new Set<StartCoroutineAwait>();
+    nest<T>(identifier: string, awaiters: AwaiterCastable[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
+        if (awaiters.length === 0) throw new Error("Must have at least one awaiter");
 
-        for (const awaiter of awaiters) {
+        const coroutineAwaiters = new Set<StartCoroutineAwait>();
+        let traces: string[] = [];
+
+        for (const awaiterCastable of awaiters) {
+            const awaiter = getAwaiter(awaiterCastable);
+
             if (isStartCoroutineAwait(awaiter)) {
                 awaiter.cancelRootCheck();
                 coroutineAwaiters.add(awaiter);
@@ -370,15 +509,48 @@ export const c = {
         }
 
         return {
-            shouldContinue(ctx: CanvasFrameContext) {
+            isNestAwait: true,
+            identifier,
+            init(initTraces: string[]) {
+                traces = initTraces;
+            },
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
                 const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
 
-                for (let i = 0; i < awaiters.length; i++) {
-                    const awaiter = awaiters[i];
-                    results[i] = awaiter.shouldContinue(ctx);
+                let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
+                try {
+                    for (let i = 0; i < awaiters.length; i++) {
+                        const awaiter = getAwaiter(awaiters[i]);
+                        lastTraceAwaiter = awaiter;
+                        lastTraceIndex = i;
+                        results[i] = awaiter.shouldContinue(ctx, signal);
+                    }
+                } catch (err) {
+                    if (lastTraceAwaiter) traces.unshift(lastTraceAwaiter.identifier);
+                    if (isStartCoroutineAwait(lastTraceAwaiter)) {
+                        const newTraces = lastTraceAwaiter.getTraces();
+                        traces.unshift(...newTraces.slice(0, newTraces.length - 1));
+                    }
+
+                    const error = err instanceof Error ? err : new Error(err + "");
+                    const handled = errorHandler ? errorHandler(error, traces, lastTraceIndex) : false;
+
+                    for (const coroutineAwaiter of coroutineAwaiters) {
+                        coroutineAwaiter.dispose();
+                    }
+
+                    if (handled === false) {
+                        throw err;
+                    } else {
+                        return handled;
+                    }
                 }
 
                 const result = handler(results);
+
+                if (typeof result.checkCount === "undefined") {
+                    result.checkCount = results.reduce((total, res) => total + (res.checkCount ?? 1), 0);
+                }
 
                 if (result.state) {
                     for (const coroutineAwaiter of coroutineAwaiters) {
@@ -398,9 +570,9 @@ export const c = {
      * - If two complete at the same time, will pick the first one passed
      * - If the passed signal is aborted, will return with data `-1`
      */
-    waitForFirst(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
-        return this.nest(awaiters, results => {
-            if (signal.aborted) return {state: "aborted", data: -1};
+    waitForFirst(awaiters: AwaiterCastable[], signal?: AbortSignal): CoroutineAwait<number> {
+        return this.nest("c.waitForFirst", awaiters, results => {
+            if (signal?.aborted) return {state: "aborted", data: -1};
 
             for (let i = 0; i < results.length; i++) {
                 const result = results[i];
@@ -419,8 +591,8 @@ export const c = {
      * If an awaiter aborts, its index is returned. Otherwise, -1 is returned.
      */
     waitForAll(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
-        return this.nest(awaiters, results => {
-            if (signal.aborted) return {state: "aborted", data: -1};
+        return this.nest("c.waitForAll", awaiters, results => {
+            if (signal?.aborted) return {state: "aborted", data: -1};
 
             let allComplete = true;
             for (let i = 0; i < results.length; i++) {
@@ -444,11 +616,25 @@ export const c = {
     /**
      * Waits until the left mouse button is pressed
      */
-    leftMousePressed(signal?: AbortSignal): CoroutineAwait<void> {
+    leftMousePressed(): CoroutineAwait<void> {
         return {
-            shouldContinue(ctx: CanvasFrameContext) {
-                if (signal?.aborted) return {state: "aborted"};
+            identifier: "c.leftMousePressed",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mousePressed.left};
+            }
+        };
+    },
+
+    /**
+     * Waits until the right mouse button is pressed
+     */
+    rightMousePressed(): CoroutineAwait<void> {
+        return {
+            identifier: "c.rightMousePressed",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+                return {state: ctx.mousePressed.right};
             }
         };
     },
@@ -456,11 +642,38 @@ export const c = {
     /**
      * Waits until the left mouse button is released
      */
-    leftMouseReleased(signal?: AbortSignal): CoroutineAwait<void> {
+    leftMouseReleased(): CoroutineAwait<void> {
         return {
-            shouldContinue(ctx: CanvasFrameContext) {
-                if (signal?.aborted) return {state: "aborted"};
+            identifier: "c.leftMouseReleased",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mouseReleased.left};
+            }
+        };
+    },
+
+    /**
+     * Waits until the specified key is pressed
+     */
+    keyPressed(key: string): CoroutineAwait<void> {
+        return {
+            identifier: "c.keyPressed",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+                return {state: ctx.keyPressed.get(key)};
+            }
+        };
+    },
+
+    /**
+     * Waits until the specified key is released
+     */
+    keyReleased(key: string): CoroutineAwait<void> {
+        return {
+            identifier: "c.keyReleased",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+                return {state: ctx.keyReleased.get(key)};
             }
         };
     },
@@ -468,13 +681,66 @@ export const c = {
     /**
      * Waits until the mouse is moved
      */
-    mouseMoved(signal?: AbortSignal): CoroutineAwait<void> {
+    mouseMoved(): CoroutineAwait<void> {
         return {
-            shouldContinue(ctx: CanvasFrameContext) {
-                if (signal?.aborted) return {state: "aborted"};
+            identifier: "c.mouseMoved",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mouseMoved};
             }
         }
+    },
+
+    /**
+     * Waits until the mouse enters the shape.
+     * @param shape A list of points that creates an outline.
+     * @param mustStartOutside When true, the mouse has to have been outside before the awaiter can return.
+     */
+    mouseEntered(shape: Collider, mustStartOutside = false): CoroutineAwait<void> {
+        let hasBeenOutside = !mustStartOutside;
+
+        return {
+            identifier: "c.mouseEntered",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+
+                const distance = shape.getSignedDistance(ctx.mousePos);
+
+                if (hasBeenOutside) {
+                    if (distance <= 0) return {state: true};
+                } else if (distance > 0) {
+                    hasBeenOutside = true;
+                }
+
+                return {state: false};
+            }
+        };
+    },
+
+    /**
+     * Waits until the mouse exits the shape.
+     * @param shape A list of points that creates an outline.
+     * @param mustStartInside When true, the mouse has to have been inside before the awaiter can return.
+     */
+    mouseExited(shape: Collider, mustStartInside = false): CoroutineAwait<void> {
+        let hasBeenInside = !mustStartInside;
+
+        return {
+            identifier: "c.mouseEntered",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+
+                const distance = shape.getSignedDistance(ctx.mousePos);
+
+                if (hasBeenInside) {
+                    if (distance > 0) return {state: true};
+                } else if (distance <= 0) {
+                    hasBeenInside = true;
+                }
+
+                return {state: false};
+            }
+        };
     },
 
     /**
@@ -485,15 +751,20 @@ export const c = {
 
         const timeout = setTimeout(() => state = true, ms);
 
-        function handleAbort() {
-            signal.removeEventListener("abort", handleAbort);
-            clearTimeout(timeout);
-        }
+        const delay = new Promise<void>(yay => {
+            function handleAbort() {
+                signal.removeEventListener("abort", handleAbort);
+                clearTimeout(timeout);
+                yay();
+            }
 
-        signal?.addEventListener("abort", handleAbort);
+            signal?.addEventListener("abort", handleAbort);
+        });
 
         return {
-            shouldContinue(ctx: CanvasFrameContext) {
+            identifier: "c.delay",
+            delay,
+            shouldContinue() {
                 if (signal?.aborted) return {state: "aborted"};
                 return {state};
             }
@@ -505,8 +776,22 @@ export const c = {
      */
     nextFrame(): CoroutineAwait<void> {
         return {
+            identifier: "c.nextFrame",
             shouldContinue() {
                 return {state: true};
+            }
+        }
+    },
+
+    /**
+     * Calls the specified check function each frame, and completes when it returns true
+     */
+    check(chk: (ctx: CanvasFrameContext) => boolean): CoroutineAwait<void> {
+        return {
+            identifier: "c.check",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal?.aborted) return {state: "aborted"};
+                return {state: chk(ctx)};
             }
         }
     }
@@ -515,6 +800,13 @@ export const c = {
 interface StartCoroutineResult {
     awaiter: CoroutineAwait<void>;
     abortController: AbortController;
+}
+
+function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
+    if (!test || typeof test !== "object") return false;
+
+    const casted = test as StartCoroutineResult;
+    return casted.abortController instanceof AbortController && typeof casted.awaiter === "object";
 }
 
 export interface CoroutineManager {
@@ -559,18 +851,117 @@ export interface CoroutineManager {
 interface StatefulCoroutine {
     coroutine: GeneratorType;
     identifier: string;
+    traces: string[];
+    abortSignal: AbortSignal;
     rootCheckDisabled: boolean;
+    waitingForDelay: boolean;
     lastResult?: CoroutineAwait<unknown>;
+    traceShiftCount: number;
+
     onComplete(): void;
 }
 
 type CoroutineGeneratorFunction = (signal: AbortSignal) => GeneratorType;
 
+function getCoroutineName(baseName: string) {
+    if (/handle[A-Z]/.test(baseName)) {
+        const name = baseName.substring("handle".length);
+        return name[0].toLowerCase() + name.substring(1);
+    }
+
+    return name;
+}
+
 class CoroutineManagerImpl implements CoroutineManager {
     private readonly _coroutines = new Set<StatefulCoroutine>();
+    private incr = 0;
+    private checkCount = 0;
+    private lastCheckCount = 0;
 
     get size() {
         return this._coroutines.size;
+    }
+
+    get identifiers() {
+        return Array.from(this._coroutines).map(item => item.identifier);
+    }
+
+    getLastCheckCount() {
+        return this.lastCheckCount;
+    }
+
+    frame(ctx: CanvasFrameContext) {
+        this.lastCheckCount = this.checkCount;
+        this.checkCount = 0;
+
+        for (const state of this._coroutines) {
+            if (state.rootCheckDisabled) continue;
+            this.handleCoroutine(ctx, state);
+        }
+    }
+
+    startCoroutine(identifier_fn: string | CoroutineGeneratorFunction, fn_opt?: CoroutineGeneratorFunction): StartCoroutineResult {
+        const identifier = typeof identifier_fn === "string" ? identifier_fn : getCoroutineName(identifier_fn.name) || `unq_${++this.incr}`;
+        const fn = typeof identifier_fn === "function" ? identifier_fn : fn_opt;
+
+        let isComplete = false;
+
+        const abortController = new AbortController();
+        const coroutine = fn(abortController.signal);
+
+        const state: StatefulCoroutine = {
+            coroutine,
+            identifier,
+            traces: [identifier],
+            abortSignal: abortController.signal,
+            rootCheckDisabled: false,
+            waitingForDelay: false,
+            traceShiftCount: 0,
+            onComplete() {
+                isComplete = true
+            }
+        };
+
+        this._coroutines.add(state);
+
+        if (process.env.NODE_ENV !== "production") {
+            console.debug("Beginning coroutine", `"${identifier}"`);
+        }
+
+        const that = this;
+        const awaiter: StartCoroutineAwait = {
+            identifier,
+            shouldContinue(ctx) {
+                that.handleCoroutine(ctx, state);
+
+                return {
+                    state: isComplete ? abortController.signal.aborted ? "aborted" : true : false
+                }
+            },
+            cancelRootCheck() {
+                state.rootCheckDisabled = true;
+            },
+            dispose() {
+                that.disposeCoroutine(state);
+            },
+            pushTraces(traces: string[]) {
+                state.traces.push(...traces);
+            },
+            addTraces(traces: string[]) {
+                state.traces.unshift(...traces);
+            },
+            removeTraces(count: number) {
+                state.traces.splice(0, count);
+            },
+            getTraces(): readonly string[] {
+                return state.traces.slice();
+            }
+        };
+
+        return {
+            abortController,
+            awaiter
+        };
     }
 
     private disposeCoroutine(state: StatefulCoroutine) {
@@ -584,72 +975,77 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 
     private handleCoroutine(ctx: CanvasFrameContext, state: StatefulCoroutine) {
-        const {state: shouldContinue, data} = state.lastResult?.shouldContinue(ctx) ?? {state: true};
+        if (state.waitingForDelay) return;
 
-        if (shouldContinue) {
-            const aborted = shouldContinue === "aborted";
-            const {done, value} = state.coroutine.next({ctx, aborted, data});
-
-            if (done) {
-                this.disposeCoroutine(state);
-            } else {
-                state.lastResult = value as CoroutineAwait<unknown>;
-            }
-        }
-    }
-
-    frame(ctx: CanvasFrameContext) {
-        for (const state of this._coroutines) {
-            if (state.rootCheckDisabled) continue;
-            this.handleCoroutine(ctx, state);
-        }
-    }
-
-    private incr = 0;
-    startCoroutine(identifier_fn: string | CoroutineGeneratorFunction, fn_opt?: CoroutineGeneratorFunction): StartCoroutineResult {
-        const identifier = typeof identifier_fn === "string" ? identifier_fn : identifier_fn.name || `unq_${++this.incr}`;
-        const fn = typeof identifier_fn === "function" ? identifier_fn : fn_opt;
-
-        let isComplete = false;
-
-        const abortController = new AbortController();
-        const coroutine = fn(abortController.signal);
-
-        const state: StatefulCoroutine = {
-            coroutine,
-            identifier,
-            rootCheckDisabled: false,
-            onComplete() { isComplete = true }
-        };
-
-        this._coroutines.add(state);
-
-        if (process.env.NODE_ENV !== "production") {
-            console.debug("Beginning coroutine", `"${identifier}"`);
+        if (state.lastResult?.delay) {
+            state.waitingForDelay = true;
+            state.lastResult.delay.then(() => state.waitingForDelay = false);
+            return;
         }
 
-        const that = this;
-        const awaiter: StartCoroutineAwait = {
-            shouldContinue(ctx) {
-                that.handleCoroutine(ctx, state);
+        if (state.lastResult) {
+            state.traceShiftCount++;
+            state.traces.unshift(state.lastResult.identifier);
+        }
 
-                return {
-                    state: isComplete ? abortController.signal.aborted ? "aborted" : true : false
+        try {
+            const {
+                state: shouldContinue,
+                data,
+                checkCount = 1
+            } = state.lastResult?.shouldContinue(ctx, state.abortSignal) ?? {state: true};
+
+            this.checkCount += checkCount;
+
+            if (shouldContinue) {
+                const aborted = shouldContinue === "aborted";
+
+                let done = false, value: CoroutineAwait<unknown> | void;
+                try {
+                    const res = state.coroutine.next({ctx, aborted, data});
+                    done = res.done;
+
+                    value = res.value ? getAwaiter(res.value) : undefined;
+                } finally {
+                    if (state.lastResult) {
+                        state.traces.splice(0, state.traceShiftCount);
+                        state.traceShiftCount = 0;
+                    }
                 }
-            },
-            cancelRootCheck() {
-                state.rootCheckDisabled = true;
-            },
-            dispose() {
-                that.disposeCoroutine(state);
-            }
-        };
 
-        return {
-            abortController,
-            awaiter
-        };
+                if (done) {
+                    this.disposeCoroutine(state);
+                } else {
+                    const res = value as CoroutineAwait<unknown>;
+
+                    if (isNestCoroutineAwait(res)) res.init?.(state.traces);
+                    else res.init?.(state.abortSignal);
+
+                    state.lastResult = value as CoroutineAwait<unknown>;
+                }
+            } else if (state.lastResult) {
+                state.lastResult.uninit?.();
+                state.traces.splice(0, state.traceShiftCount);
+                state.traceShiftCount = 0;
+            }
+        } catch (err) {
+            if (!state.rootCheckDisabled) {
+                const stack = state.traces.map(l => `  in ${l}`).join("\n");
+                err.message += "\n" + stack;
+            }
+
+            console.log("Coroutine errored:", state.identifier, state.traces);
+
+            this.disposeCoroutine(state);
+
+            throw err;
+        }
     }
+}
+
+interface CursorStackItem {
+    index: number;
+    cursor: string;
 }
 
 export default class Canvas {
@@ -663,6 +1059,7 @@ export default class Canvas {
     private _defaultPrevented: DefaultPrevented = {
         mousedown: false,
         mouseup: false,
+        contextmenu: false,
         keydown: false,
         keyup: false
     };
@@ -670,47 +1067,8 @@ export default class Canvas {
     private _defaultKeysPrevented: KeyState = new KeyState();
 
     private readonly _coroutineManager = new CoroutineManagerImpl();
-
-    public get ctx() {
-        return this._contextFactory.ctx;
-    }
-
-    private handleFrame(frame: CanvasFrameRenderer) {
-        if (!this._running) return;
-        requestAnimationFrame(this.handleFrame.bind(this, frame));
-
-        try {
-            this._contextFactory.preFrame();
-
-            const ctx = this._contextFactory.createContext();
-            frame(ctx);
-            ctx.disposeListeners.forEach(listener => listener());
-
-            this._coroutineManager.frame(ctx);
-
-            this._contextFactory.postFrame();
-        } catch (err) {
-            this._running = false;
-            console.error("To prevent overloading the browser with error logs, rendering has been stopped because of:", err);
-        }
-    }
-
-    private handleResize() {
-        const parent = this._canv.parentElement;
-        if (!parent) return;
-
-        const parentRect = parent.getBoundingClientRect();
-        this._canv.width = parentRect.width;
-        this._canv.height = parentRect.height;
-    }
-
-    private handleTrigger(cause: RenderTrigger) {
-        if (this._trigger & cause) this.handleFrame(this._callback);
-    }
-
-    private maybePreventKey(ev: KeyboardEvent) {
-        if (this._defaultKeysPrevented.get(ev.key)) ev.preventDefault();
-    }
+    private readonly cursorStack: CursorStackItem[] = [];
+    private cursorUpdateSchedule = 0;
 
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
@@ -742,12 +1100,62 @@ export default class Canvas {
         }
     }
 
+    get cursor() {
+        return this._canv.style.cursor ?? "default";
+    }
+
+    /**
+     * Sets the cursor on the canvas. Overwrites the cursor stack, until the stack changes.
+     */
+    set cursor(value: string) {
+        this._canv.style.cursor = value;
+    }
+
+    public get ctx() {
+        return this._contextFactory.ctx;
+    }
+
+    private static drawDebugLine(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", offsetY: number, items: { name: string, message: string }[]) {
+        const opts: TextWithBackgroundOptions = {
+            text: {font: "12px sans-serif", align: "left", fill: "white"},
+            background: {fill: "#0009"},
+            padding: new Vector2(4, 4)
+        };
+
+        const isRight = corner.endsWith("r");
+        const isBottom = corner.startsWith("b");
+
+        let maxHeight = 0;
+
+        let xPos = isRight ? ctx.screenSize.x - 5 : 5;
+        const yPos = isBottom ? ctx.screenSize.y - offsetY - 20 : offsetY;
+
+        for (const {name, message} of items) {
+            const text = `${name}: ${message}`;
+            const {
+                width: textWidth,
+                actualBoundingBoxAscent,
+                actualBoundingBoxDescent
+            } = measureText(ctx, text, opts.text);
+
+            maxHeight = Math.max(maxHeight, actualBoundingBoxAscent + actualBoundingBoxDescent);
+
+            if (isRight) xPos -= textWidth;
+            textWithBackground(ctx, new Vector2(xPos, yPos), text, opts);
+
+            if (!isRight) xPos += textWidth + 15;
+            else xPos -= 15;
+        }
+
+        return offsetY + maxHeight + 10;
+    }
+
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
         this._trigger = renderTrigger;
 
         if (this._trigger === RenderTrigger.Always) {
             this._running = true;
-            requestAnimationFrame(this.handleFrame.bind(this, frame));
+            this.beginRunningFrames(frame);
         } else {
             this._callback = frame;
         }
@@ -772,18 +1180,144 @@ export default class Canvas {
     }
 
     public drawDebug(ctx: CanvasFrameContext) {
-        let offsetTop = 5;
+        this.drawCustomDebug(ctx, "tl", {
+            FPS: `${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`,
+            M: ctx.mousePos.toString(),
+            D: ctx.disposeListeners.length.toFixed(0),
+            _C: this._coroutineManager.size.toFixed(0),
+            _SC: this._coroutineManager.getLastCheckCount().toFixed(0),
+            CN: this._coroutineManager.identifiers.join(", ")
+        });
+    }
 
-        const opts: TextWithBackgroundOptions = {
-            text: {font: "12px sans-serif", align: "left", fill: "white"},
-            background: {fill: "gray"},
-            padding: new Vector2(4, 4)
+    public drawCustomDebug(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", messages: Record<string, string>) {
+        let offsetY = 5;
+
+        let messagesToWrite: { name: string, message: string }[] = [];
+
+        for (const [name, message] of Object.entries(messages)) {
+            const sameLine = name.startsWith("_");
+
+            if (!sameLine && messagesToWrite.length > 0) {
+                offsetY = Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
+                messagesToWrite.length = 0;
+            }
+
+            const displayName = sameLine ? name.substring(1) : name;
+            messagesToWrite.push({name: displayName, message});
+        }
+
+        if (messagesToWrite.length > 0) {
+            Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
+        }
+    }
+
+    /**
+     * Pushes a cursor onto the cursor stack for the canvas to use, until something else pushes a new cursor,
+     * or you pull this cursor off the stack.
+     * @param cursor The CSS name of the cursor.
+     * @returns The function that pulls the cursor off the stack.
+     */
+    pushCursor(cursor: string): () => void {
+        const index = this.cursorStack.length;
+
+        const item: CursorStackItem = {
+            index, cursor
         };
 
-        textWithBackground(ctx, new Vector2(5, offsetTop), `FPS: ${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`, opts);
-        offsetTop += 20;
+        this.cursorStack.push(item);
+        this.scheduleUrgentCursorUpdate();
 
-        textWithBackground(ctx, new Vector2(5, offsetTop), `DI: ${ctx.disposeListeners.length} C: ${this._coroutineManager.size}`, opts);
-        offsetTop += 20;
+        return () => {
+            this.deleteCursorStackItem(item.index);
+            this.scheduleNonUrgentCursorUpdate();
+        };
+    }
+
+    private deleteCursorStackItem(index: number) {
+        this.cursorStack.splice(index, 1);
+
+        for (const item of this.cursorStack.slice(index)) {
+            item.index--;
+        }
+    }
+
+    private handleFrame(frame: CanvasFrameRenderer) {
+        try {
+            this._contextFactory.preFrame();
+
+            const ctx = this._contextFactory.createContext();
+            frame(ctx);
+            this._coroutineManager.frame(ctx);
+            ctx.disposeListeners.forEach(listener => listener());
+
+            if (this.cursorUpdateSchedule === 1) {
+                this.updateCursorFromStack();
+            }
+
+            if (this.cursorUpdateSchedule) {
+                this.cursorUpdateSchedule--;
+            }
+
+            this._contextFactory.postFrame();
+        } catch (err) {
+            this._running = false;
+            console.error("To prevent overloading the browser with error logs, rendering has been stopped because of:", err);
+        }
+    }
+
+    private async beginRunningFrames(frame: CanvasFrameRenderer) {
+        while (this._running) {
+            this.handleFrame(frame);
+            await new Promise(yay => requestAnimationFrame(yay));
+        }
+    }
+
+    private handleResize() {
+        const parent = this._canv.parentElement;
+        if (!parent) return;
+
+        const parentRect = parent.getBoundingClientRect();
+        this._canv.width = parentRect.width;
+        this._canv.height = parentRect.height;
+    }
+
+    private handleTrigger(cause: RenderTrigger) {
+        if (this._trigger & cause) this.handleFrame(this._callback);
+    }
+
+    private maybePreventKey(ev: KeyboardEvent) {
+        if (this._defaultKeysPrevented.get(ev.key)) ev.preventDefault();
+    }
+
+    /**
+     * Synchronously updates the cursor to be the latest on the stack.
+     * Don't use this method—use one of the asynchronous methods instead.
+     */
+    private updateCursorFromStack() {
+        this.cursor = this.cursorStack[0]?.cursor ?? "default";
+    }
+
+    /**
+     * Schedules the cursor to update on the next fram
+     */
+    private scheduleUrgentCursorUpdate() {
+        this.scheduleCursorUpdate(0);
+    }
+
+    /**
+     * Schedules the cursor to update in a few frames
+     */
+    private scheduleNonUrgentCursorUpdate() {
+        this.scheduleCursorUpdate(2);
+    }
+
+    /**
+     * Schedules the cursor to update in the specified number of frames.
+     * Cursor updates always align with a frame.
+     */
+    private scheduleCursorUpdate(frames: number) {
+        if (!this.cursorUpdateSchedule) this.cursorUpdateSchedule = frames + 1;
+        else this.cursorUpdateSchedule = Math.min(this.cursorUpdateSchedule, frames + 1);
     }
 }

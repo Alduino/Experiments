@@ -2,6 +2,48 @@ export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
+    private _source: { x: number, y: number };
+
+    constructor(x: number = 0, y: number = 0) {
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+            throw new Error("x or y are NaN");
+        }
+
+        this._source = {x, y};
+    }
+
+    static get zero() {
+        return new Vector2(0, 0);
+    }
+
+    static get one() {
+        return new Vector2(1, 1);
+    }
+
+    static get negativeOne() {
+        return new Vector2(-1, -1);
+    }
+
+    public get x() {
+        if (!this._source) return undefined;
+        return this._source.x;
+    }
+
+    public set x(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
+        this._source.x = value;
+    }
+
+    public get y() {
+        if (!this._source) return undefined;
+        return this._source.y;
+    }
+
+    public set y(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
+        this._source.y = value;
+    }
+
     /**
      * Returns true if the points are at the same location
      */
@@ -13,7 +55,7 @@ export default class Vector2 {
      * Clones a point-like object into a Vector2
      * @param obj An object with x and y keys
      */
-    static from(obj: {x: number, y: number}) {
+    static from(obj: { x: number, y: number }) {
         return new Vector2(obj.x, obj.y);
     }
 
@@ -25,7 +67,7 @@ export default class Vector2 {
      * change in the original object. This method should usually not be used, however sometimes it is just
      * easier or cleaner than the alternative.
      */
-    static import(obj: {x: number, y: number}) {
+    static import(obj: { x: number, y: number }) {
         const vec = new Vector2();
         vec._source = obj;
         return vec;
@@ -39,30 +81,26 @@ export default class Vector2 {
         return b.subtract(a).multiply(new Vector2(t, t)).add(a);
     }
 
-    private _source: {x: number, y: number};
+    static max(vector: Vector2, ...vectors: Vector2[]) {
+        let maxX = vector.x, maxY = vector.y;
 
-    public get x() {
-        if (!this._source) return undefined;
-        return this._source.x;
+        for (const {x, y} of vectors) {
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+
+        return new Vector2(maxX, maxY);
     }
 
-    public get y() {
-        if (!this._source) return undefined;
-        return this._source.y;
-    }
+    static min(vector: Vector2, ...vectors: Vector2[]) {
+        let minX = vector.x, minY = vector.y;
 
-    public set x(value: number) {
-        if (!this._source) this._source = {x: 0, y: 0};
-        this._source.x = value;
-    }
+        for (const {x, y} of vectors) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+        }
 
-    public set y(value: number) {
-        if (!this._source) this._source = {x: 0, y: 0};
-        this._source.y = value;
-    }
-
-    constructor(x: number = 0, y: number = 0) {
-        this._source = {x, y};
+        return new Vector2(minX, minY);
     }
 
     clone() {
@@ -73,7 +111,7 @@ export default class Vector2 {
         return Vector2.equal(this, to);
     }
 
-    replace(to: {x: number, y: number}) {
+    replace(to: { x: number, y: number }) {
         this._source = to;
         return this;
     }
@@ -100,8 +138,12 @@ export default class Vector2 {
         return new Vector2(-this.x, -this.y);
     }
 
+    lengthSquared() {
+        return this.x * this.x + this.y * this.y;
+    }
+
     length() {
-        return Math.sqrt(this.x ** 2 + this.y ** 2);
+        return Math.sqrt(this.lengthSquared());
     }
 
     withLength(length: number) {
@@ -116,6 +158,10 @@ export default class Vector2 {
 
     dir() {
         return Math.atan2(this.y, this.x);
+    }
+
+    abs() {
+        return new Vector2(Math.abs(this.x), Math.abs(this.y));
     }
 
     dot(b: Vector2) {
@@ -135,6 +181,10 @@ export default class Vector2 {
             this.x * Math.cos(radians) - this.y * Math.sin(radians),
             this.y * Math.cos(radians) + this.x * Math.sin(radians)
         );
+    }
+
+    perpendicular(inv = false) {
+        return new Vector2(this.y * (inv ? -1 : 1), this.x * (inv ? 1 : -1));
     }
 
     angleUnsigned(other: Vector2) {
@@ -168,5 +218,12 @@ export default class Vector2 {
 
     toString() {
         return `[${this.x}, ${this.y}]`;
+    }
+
+    clamp(min: Vector2, max: Vector2) {
+        return new Vector2(
+            Math.min(Math.max(this.x, min.x), max.x),
+            Math.min(Math.max(this.y, min.y), max.y)
+        )
     }
 }
