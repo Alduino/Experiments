@@ -310,6 +310,40 @@ interface DefaultPrevented {
     keyup: boolean;
 }
 
+interface Collider {
+    /**
+     * Returns the closest signed distance to the shape from the point
+     */
+    getSignedDistance(point: Vector2): number;
+}
+
+class RectangleCollider implements Collider {
+    constructor(public readonly tl: Vector2, public readonly br: Vector2) {
+    }
+
+    getSignedDistance(point: Vector2): number {
+        // based on https://stackoverflow.com/a/30545544
+
+        const d = Vector2.max(
+            this.tl.subtract(point),
+            this.br.subtract(point)
+        );
+
+        const a = Vector2.max(
+            Vector2.zero,
+            d
+        ).length();
+
+        const b = Math.min(
+            0,
+            Math.max(d.x, d.y)
+        );
+
+        return a + b;
+    }
+
+}
+
 type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? { state: true | "aborted", checkCount?: number } : { state: true | "aborted", data: T, checkCount?: number };
 
 export type CoroutineAwaitResult<T> =
@@ -654,6 +688,58 @@ export const c = {
     },
 
     /**
+     * Waits until the mouse enters the shape.
+     * @param shape A list of points that creates an outline.
+     * @param mustStartOutside When true, the mouse has to have been outside before the awaiter can return.
+     */
+    mouseEntered(shape: Collider, mustStartOutside = false): CoroutineAwait<void> {
+        let hasBeenOutside = !mustStartOutside;
+
+        return {
+            identifier: "c.mouseEntered",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+
+                const distance = shape.getSignedDistance(ctx.mousePos);
+
+                if (hasBeenOutside) {
+                    if (distance <= 0) return {state: true};
+                } else if (distance > 0) {
+                    hasBeenOutside = true;
+                }
+
+                return {state: false};
+            }
+        };
+    },
+
+    /**
+     * Waits until the mouse exits the shape.
+     * @param shape A list of points that creates an outline.
+     * @param mustStartInside When true, the mouse has to have been inside before the awaiter can return.
+     */
+    mouseExited(shape: Collider, mustStartInside = false): CoroutineAwait<void> {
+        let hasBeenInside = !mustStartInside;
+
+        return {
+            identifier: "c.mouseEntered",
+            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+
+                const distance = shape.getSignedDistance(ctx.mousePos);
+
+                if (hasBeenInside) {
+                    if (distance > 0) return {state: true};
+                } else if (distance <= 0) {
+                    hasBeenInside = true;
+                }
+
+                return {state: false};
+            }
+        };
+    },
+
+    /**
      * Waits for the specified number of milliseconds. Note that it will still be aligned to a frame.
      */
     delay(ms: number, signal?: AbortSignal): CoroutineAwait<void> {
@@ -956,14 +1042,6 @@ export default class Canvas {
 
     private readonly _coroutineManager = new CoroutineManagerImpl();
 
-    get cursor() {
-        return this._canv.style.cursor ?? "default";
-    }
-
-    set cursor(value: string) {
-        this._canv.style.cursor = value;
-    }
-
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
         this._contextFactory = new CanvasFrameContextFactory(this._canv);
@@ -992,6 +1070,14 @@ export default class Canvas {
                     "This message will only be shown in development builds.");
             }
         }
+    }
+
+    get cursor() {
+        return this._canv.style.cursor ?? "default";
+    }
+
+    set cursor(value: string) {
+        this._canv.style.cursor = value;
     }
 
     public get ctx() {

@@ -2,6 +2,40 @@ export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
+    private _source: { x: number, y: number };
+
+    constructor(x: number = 0, y: number = 0) {
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+            throw new Error("x or y are NaN");
+        }
+
+        this._source = {x, y};
+    }
+
+    static get zero() {
+        return new Vector2(0, 0);
+    }
+
+    public get x() {
+        if (!this._source) return undefined;
+        return this._source.x;
+    }
+
+    public set x(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
+        this._source.x = value;
+    }
+
+    public get y() {
+        if (!this._source) return undefined;
+        return this._source.y;
+    }
+
+    public set y(value: number) {
+        if (!this._source) this._source = {x: 0, y: 0};
+        this._source.y = value;
+    }
+
     /**
      * Returns true if the points are at the same location
      */
@@ -13,7 +47,7 @@ export default class Vector2 {
      * Clones a point-like object into a Vector2
      * @param obj An object with x and y keys
      */
-    static from(obj: {x: number, y: number}) {
+    static from(obj: { x: number, y: number }) {
         return new Vector2(obj.x, obj.y);
     }
 
@@ -25,7 +59,7 @@ export default class Vector2 {
      * change in the original object. This method should usually not be used, however sometimes it is just
      * easier or cleaner than the alternative.
      */
-    static import(obj: {x: number, y: number}) {
+    static import(obj: { x: number, y: number }) {
         const vec = new Vector2();
         vec._source = obj;
         return vec;
@@ -39,34 +73,26 @@ export default class Vector2 {
         return b.subtract(a).multiply(new Vector2(t, t)).add(a);
     }
 
-    private _source: {x: number, y: number};
+    static max(vector: Vector2, ...vectors: Vector2[]) {
+        let maxX = vector.x, maxY = vector.y;
 
-    public get x() {
-        if (!this._source) return undefined;
-        return this._source.x;
-    }
-
-    public get y() {
-        if (!this._source) return undefined;
-        return this._source.y;
-    }
-
-    public set x(value: number) {
-        if (!this._source) this._source = {x: 0, y: 0};
-        this._source.x = value;
-    }
-
-    public set y(value: number) {
-        if (!this._source) this._source = {x: 0, y: 0};
-        this._source.y = value;
-    }
-
-    constructor(x: number = 0, y: number = 0) {
-        if (Number.isNaN(x) || Number.isNaN(y)) {
-            throw new Error("x or y are NaN");
+        for (const {x, y} of vectors) {
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
         }
 
-        this._source = {x, y};
+        return new Vector2(maxX, maxY);
+    }
+
+    static min(vector: Vector2, ...vectors: Vector2[]) {
+        let minX = vector.x, minY = vector.y;
+
+        for (const {x, y} of vectors) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+        }
+
+        return new Vector2(minX, minY);
     }
 
     clone() {
@@ -77,7 +103,7 @@ export default class Vector2 {
         return Vector2.equal(this, to);
     }
 
-    replace(to: {x: number, y: number}) {
+    replace(to: { x: number, y: number }) {
         this._source = to;
         return this;
     }
