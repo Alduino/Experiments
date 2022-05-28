@@ -322,24 +322,16 @@ export class RectangleCollider implements Collider {
     }
 
     getSignedDistance(point: Vector2): number {
-        // based on https://stackoverflow.com/a/30545544
+        const halfSize = this.br.subtract(this.tl).divide(2);
+        const samplePosition = point.subtract(this.tl).subtract(halfSize);
 
-        const d = Vector2.max(
-            this.tl.subtract(point),
-            this.br.subtract(point)
-        );
+        // based on https://www.ronja-tutorials.com/post/034-2d-sdf-basics/#rectangle
+        const componentWiseEdgeDistance = samplePosition.abs().subtract(halfSize);
 
-        const a = Vector2.max(
-            Vector2.zero,
-            d
-        ).length();
+        const outsideDistance = Vector2.max(componentWiseEdgeDistance, Vector2.zero).length();
+        const insideDistance = Math.min(Math.max(componentWiseEdgeDistance.x, componentWiseEdgeDistance.y), 0);
 
-        const b = Math.min(
-            0,
-            Math.max(d.x, d.y)
-        );
-
-        return a + b;
+        return outsideDistance + insideDistance;
     }
 
 }
