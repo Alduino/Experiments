@@ -1,5 +1,6 @@
 import Vector2 from "./Vector2";
 import Canvas, {CanvasFrameContext} from "./canvas-setup";
+import QuickLRU from "quick-lru";
 
 export type FillType = string | CanvasGradient;
 
@@ -291,7 +292,7 @@ interface Stop {
     colour: string;
 }
 
-const gradientCache: Map<CanvasRenderingContext2D, Map<string, CanvasGradient>> = new Map();
+const gradientCache: Map<CanvasRenderingContext2D, QuickLRU<string, CanvasGradient>> = new Map();
 
 function createGradientHash(type: string, start: Vector2, end: Vector2, stops: Stop[]) {
     return `${type}_${start}_${end}_${stops.map(stop => `${stop.time}_${stop.colour}`).join(",")}`;
@@ -300,13 +301,38 @@ function createGradientHash(type: string, start: Vector2, end: Vector2, stops: S
 export function linearGradient(ctx: CanvasFrameContext, start: Vector2, end: Vector2, stops: Stop[]) {
     const hash = createGradientHash("linear", start, end, stops);
 
-    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new Map());
+    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new QuickLRU({
+        maxSize: 200
+    }));
+
     const gradientCacheMap = gradientCache.get(ctx.renderer);
     if (gradientCacheMap.has(hash)) {
         return gradientCacheMap.get(hash);
     }
 
     const gradient = ctx.renderer.createLinearGradient(start.x, start.y, end.x, end.y);
+
+    for (const stop of stops) {
+        gradient.addColorStop(stop.time, stop.colour);
+    }
+
+    gradientCacheMap.set(hash, gradient);
+    return gradient;
+}
+
+export function radialGradient(ctx: CanvasFrameContext, start: Vector2, startRadius: number, end: Vector2, endRadius: number, stops: Stop[]) {
+    const hash = createGradientHash("radial", start, end, stops);
+
+    if (!gradientCache.has(ctx.renderer)) gradientCache.set(ctx.renderer, new QuickLRU({
+        maxSize: 200
+    }));
+
+    const gradientCacheMap = gradientCache.get(ctx.renderer);
+    if (gradientCacheMap.has(hash)) {
+        return gradientCacheMap.get(hash);
+    }
+
+    const gradient = ctx.renderer.createRadialGradient(start.x, start.y, startRadius, end.x, end.y, endRadius);
 
     for (const stop of stops) {
         gradient.addColorStop(stop.time, stop.colour);

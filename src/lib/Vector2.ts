@@ -16,6 +16,14 @@ export default class Vector2 {
         return new Vector2(0, 0);
     }
 
+    static get one() {
+        return new Vector2(1, 1);
+    }
+
+    static get negativeOne() {
+        return new Vector2(-1, -1);
+    }
+
     public get x() {
         if (!this._source) return undefined;
         return this._source.x;
@@ -210,5 +218,12 @@ export default class Vector2 {
 
     toString() {
         return `[${this.x}, ${this.y}]`;
+    }
+
+    clamp(min: Vector2, max: Vector2) {
+        return new Vector2(
+            Math.min(Math.max(this.x, min.x), max.x),
+            Math.min(Math.max(this.y, min.y), max.y)
+        )
     }
 }
