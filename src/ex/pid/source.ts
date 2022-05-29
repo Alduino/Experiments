@@ -294,7 +294,7 @@ class MovementGraph {
             colour: "white"
         });
 
-        text(ctx, new Vector2(160, ctx.screenSize.y - 340), "CONTROL VECTORS", {
+        text(ctx, new Vector2(160, ctx.screenSize.y - 340), "CONTROL VECTOR", {
             font: "800 24px Montserrat",
             align: "center",
             fill: "white"
