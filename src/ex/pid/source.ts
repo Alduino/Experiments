@@ -301,7 +301,7 @@ class MovementGraph {
         })
 
         circle(ctx, previousDotPosition, 2, {fill: "white"});
-        circle(ctx, dotPosition, 2, {fill: "white"});
+        circle(ctx, dotPosition, this.overriddenMovement ? 6 : 2, {fill: "white"});
     }
 
     register(cm: CoroutineManager) {
