@@ -400,12 +400,6 @@ interface NestCoroutineAwait<T> extends CoroutineAwaitBase<T> {
     uninit?(): void;
 }
 
-export type CoroutineAwait<T> = NormalCoroutineAwait<T> | NestCoroutineAwait<T>;
-
-function isNestCoroutineAwait<T>(awaiter: CoroutineAwait<T>): awaiter is NestCoroutineAwait<T> {
-    return (awaiter as NestCoroutineAwait<T>).isNestAwait === true;
-}
-
 interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     // Used for nested coroutines, stops it accepting updates from the root controller, so that they can be controlled
     // by whatever nested them.
@@ -435,6 +429,12 @@ interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
      * Returns all the traces
      */
     getTraces(): readonly string[];
+}
+
+export type CoroutineAwait<T> = NormalCoroutineAwait<T> | NestCoroutineAwait<T>;
+
+function isNestCoroutineAwait<T>(awaiter: CoroutineAwait<T>): awaiter is NestCoroutineAwait<T> {
+    return (awaiter as NestCoroutineAwait<T>).isNestAwait === true;
 }
 
 function isStartCoroutineAwait(v: unknown): v is StartCoroutineAwait {
@@ -496,7 +496,9 @@ export const c = {
     nest<T>(identifier: string, awaiters: AwaiterCastable[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
         if (awaiters.length === 0) throw new Error("Must have at least one awaiter");
 
+        const castedAwaiters = new Map<AwaiterCastable, CoroutineAwait<unknown>>();
         const coroutineAwaiters = new Set<StartCoroutineAwait>();
+
         let traces: string[] = [];
         let cm: CoroutineManager;
 
@@ -520,7 +522,17 @@ export const c = {
                 let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
                 try {
                     for (let i = 0; i < awaiters.length; i++) {
-                        const awaiter = getAwaiter(cm, awaiters[i]);
+                        const castable = awaiters[i];
+
+                        const awaiter = castedAwaiters.get(castable) ?? getAwaiter(cm, castable);
+                        castedAwaiters.set(castable, awaiter);
+
+                        if (isStartCoroutineAwait(awaiter) && !coroutineAwaiters.has(awaiter)) {
+                            // can't do this outside as `cm` isn't set yet
+                            awaiter.cancelRootCheck();
+                            coroutineAwaiters.add(awaiter);
+                        }
+
                         lastTraceAwaiter = awaiter;
                         lastTraceIndex = i;
                         results[i] = awaiter.shouldContinue(ctx, signal);

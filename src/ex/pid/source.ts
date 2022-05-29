@@ -16,7 +16,6 @@ type TargetMouseState = "none" | "hovered" | "active";
 
 class Target {
     public static active: Target | null = null;
-    static activeChangedHook?: () => void;
     private static size = new Vector2(100, 100);
     private static cancelSize = this.size.multiply(1.2);
     private static fills: Record<TargetMouseState, Colord> = {
@@ -117,6 +116,16 @@ class Target {
                     if (data === 0) {
                         Target.active = self;
                         Target.activeChangedHook?.();
+                    } else {
+                        yield c.waitForFirst([
+                            c.leftMouseReleased(),
+                            function* handleTargetDrag() {
+                                while (true) {
+                                    const {ctx} = yield c.mouseMoved();
+                                    self.position = ctx.mousePos;
+                                }
+                            }
+                        ]);
                     }
                 } else {
                     self.setMouseState("none");
@@ -212,8 +221,6 @@ class PidController {
             colour: "#7edbde"
         });
     }
-
-
 }
 
 class MovementGraph {
@@ -491,12 +498,7 @@ const pidController = new PidController(1, 0.8, 1);
 
 const graph = new MovementGraph();
 
-Target.activeChangedHook = () => {
-    pidController.target = Target.active.position;
-};
-
 Target.active = targets.values().next().value;
-Target.activeChangedHook();
 
 const canvas = new Canvas("canvas");
 
@@ -522,6 +524,8 @@ const cm = canvas.getCoroutineManager();
 cm.startCoroutine(function* handlePhysics() {
     while (true) {
         const {ctx} = yield c.nextFrame();
+
+        pidController.target = Target.active.position;
 
         const movement = pidController.update(ctx.deltaTime, movedObject.readPosition());
         graph.movement = graph.overriddenMovement ?? movement;
