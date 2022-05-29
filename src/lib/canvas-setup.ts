@@ -392,7 +392,7 @@ interface NestCoroutineAwait<T> extends CoroutineAwaitBase<T> {
     /**
      * Called when the awaiter is first called, with that coroutine's traces as the parameter
      */
-    init?(traces: string[]): void;
+    init?(traces: string[], cm: CoroutineManager): void;
 
     /**
      * Called after the awaiter is last used
@@ -437,7 +437,7 @@ interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     getTraces(): readonly string[];
 }
 
-function isStartCoroutineAwait(v: CoroutineAwait<void>): v is StartCoroutineAwait {
+function isStartCoroutineAwait(v: unknown): v is StartCoroutineAwait {
     if (!v) return false;
     return typeof (v as StartCoroutineAwait).cancelRootCheck === "function";
 }
@@ -462,9 +462,9 @@ export interface CoroutineContext {
 type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
 type GeneratorType = Generator<AwaiterCastable, void, CoroutineContext>;
 
-function getAwaiter(awaiterCastable: AwaiterCastable) {
+function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable): CoroutineAwait<unknown> {
     if (typeof awaiterCastable === "function") {
-        return this.startCoroutine(awaiterCastable).awaiter;
+        return manager.startCoroutine(awaiterCastable).awaiter;
     } else if (isStartCoroutineResult(awaiterCastable)) {
         return awaiterCastable.awaiter;
     } else {
@@ -498,10 +498,9 @@ export const c = {
 
         const coroutineAwaiters = new Set<StartCoroutineAwait>();
         let traces: string[] = [];
+        let cm: CoroutineManager;
 
-        for (const awaiterCastable of awaiters) {
-            const awaiter = getAwaiter(awaiterCastable);
-
+        for (const awaiter of awaiters) {
             if (isStartCoroutineAwait(awaiter)) {
                 awaiter.cancelRootCheck();
                 coroutineAwaiters.add(awaiter);
@@ -511,8 +510,9 @@ export const c = {
         return {
             isNestAwait: true,
             identifier,
-            init(initTraces: string[]) {
+            init(initTraces: string[], coroutineManager: CoroutineManager) {
                 traces = initTraces;
+                cm = coroutineManager;
             },
             shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
                 const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
@@ -520,7 +520,7 @@ export const c = {
                 let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
                 try {
                     for (let i = 0; i < awaiters.length; i++) {
-                        const awaiter = getAwaiter(awaiters[i]);
+                        const awaiter = getAwaiter(cm, awaiters[i]);
                         lastTraceAwaiter = awaiter;
                         lastTraceIndex = i;
                         results[i] = awaiter.shouldContinue(ctx, signal);
@@ -560,7 +560,7 @@ export const c = {
 
                 return result;
             }
-        }
+        };
     },
 
     /**
@@ -1005,7 +1005,7 @@ class CoroutineManagerImpl implements CoroutineManager {
                     const res = state.coroutine.next({ctx, aborted, data});
                     done = res.done;
 
-                    value = res.value ? getAwaiter(res.value) : undefined;
+                    value = res.value ? getAwaiter(this, res.value) : undefined;
                 } finally {
                     if (state.lastResult) {
                         state.traces.splice(0, state.traceShiftCount);
@@ -1018,7 +1018,7 @@ class CoroutineManagerImpl implements CoroutineManager {
                 } else {
                     const res = value as CoroutineAwait<unknown>;
 
-                    if (isNestCoroutineAwait(res)) res.init?.(state.traces);
+                    if (isNestCoroutineAwait(res)) res.init?.(state.traces, this);
                     else res.init?.(state.abortSignal);
 
                     state.lastResult = value as CoroutineAwait<unknown>;
