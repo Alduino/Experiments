@@ -115,7 +115,6 @@ class Target {
 
                     if (data === 0) {
                         Target.active = self;
-                        Target.activeChangedHook?.();
                     } else {
                         yield c.waitForFirst([
                             c.leftMouseReleased(),
@@ -361,6 +360,8 @@ class MovedObject {
     private velocity = new Vector2(0, 0);
     private acceleration = new Vector2(0, 0);
 
+    private rotation = 0;
+
     private readonly debugInfo: Record<string, string> = {};
 
     private readonly thrusters: Thrusters = {
@@ -380,16 +381,22 @@ class MovedObject {
     render(ctx: CanvasFrameContext) {
         const halfSize = MovedObject.size.divide(2);
 
+        ctx.renderer.translate(this.position.x, this.position.y);
+        ctx.renderer.rotate(this.rotation);
+
         this.renderThruster(ctx, this.thrusters.top, new Vector2(0, -1));
         this.renderThruster(ctx, this.thrusters.left, new Vector2(-1, 0));
         this.renderThruster(ctx, this.thrusters.right, new Vector2(1, 0));
         this.renderThruster(ctx, this.thrusters.bottom, new Vector2(0, 1));
 
-        roundedRectangle(ctx, this.position.subtract(halfSize), this.position.add(halfSize), 8, {
+        roundedRectangle(ctx, halfSize.negate(), halfSize, 8, {
             fill: "#605c34",
             thickness: 2,
             colour: "#1f2636"
         });
+
+        ctx.renderer.rotate(-this.rotation);
+        ctx.renderer.translate(-this.position.x, -this.position.y);
     }
 
     update(dutyCycle: Vector2) {
@@ -445,7 +452,7 @@ class MovedObject {
 
         const direction = Math.atan2(offset.y, offset.x);
 
-        const connectionPoint = this.position.add(offset.multiply(0.8).multiply(MovedObject.size.divide(2)));
+        const connectionPoint = offset.multiply(0.8).multiply(MovedObject.size.divide(2));
 
         const leftOffset = new Vector2(MovedObject.thrusterGraphicsSize, 0).rotate(direction - MovedObject.thrusterGraphicsAngle);
         const rightOffset = new Vector2(MovedObject.thrusterGraphicsSize, 0).rotate(direction + MovedObject.thrusterGraphicsAngle);
