@@ -226,4 +226,8 @@ export default class Vector2 {
             Math.min(Math.max(this.y, min.y), max.y)
         )
     }
+
+    negate() {
+        return new Vector2(-this.x, -this.y);
+    }
 }

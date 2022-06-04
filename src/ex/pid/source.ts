@@ -1,5 +1,5 @@
 import Canvas, {c, CanvasFrameContext, CoroutineManager, RectangleCollider} from "../../lib/canvas-setup";
-import {circle, draw, line, moveTo, path, radialGradient, rect, roundedRectangle, text} from "../../lib/imgui";
+import {circle, draw, line, moveTo, path, rect, roundedRectangle, text} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
 import {colord, Colord, extend as addColordPlugin} from "colord";
 import mixPlugin from "colord/plugins/mix";
@@ -143,7 +143,32 @@ class Target {
     }
 }
 
-class PidController {
+class ValvePidController {
+    target = 0;
+
+    lastError = 0;
+
+    integration = 0;
+
+    constructor(public pGain: number, public iGain: number, public dGain: number) {
+    }
+
+    update(dt: number, current: number): number {
+        const error = this.target - current;
+
+        const p = error * this.pGain;
+        const i = (this.integration + error * dt) * this.iGain;
+        const d = ((error - this.lastError) / dt) * this.dGain;
+
+        this.integration = i;
+
+        this.lastError = error;
+
+        return p + i + d;
+    }
+}
+
+class ObjectPidController {
     private static targetIndicatorSize = 5;
     private static scale = 1 / 20;
 
@@ -179,22 +204,22 @@ class PidController {
         this.lastI = i;
         this.lastD = d;
 
-        const combined = p.add(i).add(d).multiply(PidController.scale);
+        const combined = p.add(i).add(d).multiply(ObjectPidController.scale);
         this.lastCombined = combined;
         return combined;
     }
 
     drawDebugLines(ctx: CanvasFrameContext) {
         line(ctx, {
-            start: this.target.subtract(new Vector2(PidController.targetIndicatorSize, 0)),
-            end: this.target.add(new Vector2(PidController.targetIndicatorSize, 0)),
+            start: this.target.subtract(new Vector2(ObjectPidController.targetIndicatorSize, 0)),
+            end: this.target.add(new Vector2(ObjectPidController.targetIndicatorSize, 0)),
             thickness: 2,
             colour: "#de7e7e"
         });
 
         line(ctx, {
-            start: this.target.subtract(new Vector2(0, PidController.targetIndicatorSize)),
-            end: this.target.add(new Vector2(0, PidController.targetIndicatorSize)),
+            start: this.target.subtract(new Vector2(0, ObjectPidController.targetIndicatorSize)),
+            end: this.target.add(new Vector2(0, ObjectPidController.targetIndicatorSize)),
             thickness: 2,
             colour: "#de7e7e"
         });
@@ -338,9 +363,20 @@ class MovementGraph {
 }
 
 interface ThrusterState {
-    firing: boolean;
+    /**
+     * a number either 0 or between 0.5 and 1
+     */
+    throttle: number;
+
+
+    pid: ValvePidController;
+
     lastChanged: number;
     lastAttemptedChange?: number;
+    sfx: Sfx;
+
+    attemptedThrottle: number;
+    previousThrottle?: number;
 }
 
 interface Thrusters {
@@ -350,9 +386,77 @@ interface Thrusters {
     bottom: ThrusterState;
 }
 
+const audioContext = new AudioContext({latencyHint: "interactive"});
+const frameCount = audioContext.sampleRate;
+
+interface Sfx {
+    play(volume: number): void;
+
+    stop(): void;
+}
+
+function createSfx(pan: number): Sfx {
+    const buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
+
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+        channelData[i] = Math.random() * 2 - 1;
+    }
+
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.start();
+
+    const firstFilter = audioContext.createBiquadFilter();
+    firstFilter.type = "bandpass";
+    firstFilter.frequency.value = 5000;
+    source.connect(firstFilter);
+
+    const filter = audioContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 6;
+    firstFilter.connect(filter);
+
+    const gain = audioContext.createGain();
+    gain.gain.value = 0;
+    filter.connect(gain);
+
+    const panner = audioContext.createStereoPanner();
+    panner.pan.value = pan;
+    gain.connect(panner);
+
+    panner.connect(audioContext.destination);
+
+    return {
+        play(volume: number) {
+            filter.frequency.value = 500 + (volume * 8000);
+            gain.gain.cancelScheduledValues(audioContext.currentTime);
+            gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+        },
+        stop() {
+            gain.gain.setValueAtTime(0, audioContext.currentTime);
+        }
+    };
+}
+
+function clamp(t: number, a: number, b: number) {
+    if (a === b) return a;
+
+    if (a < b) {
+        if (t < a) return a;
+        if (t > b) return b;
+        return t;
+    } else {
+        if (t < b) return b;
+        if (t > a) return a;
+        return t;
+    }
+}
+
 class MovedObject {
     private static readonly size = new Vector2(50, 50);
-    private static readonly minimumThrusterTime = 50;
+    private static readonly minimumThrusterTime = 200;
     private static readonly thrusterGraphicsSize = 20;
     private static readonly thrusterGraphicsAngle = Math.PI * 0.2;
 
@@ -365,10 +469,34 @@ class MovedObject {
     private readonly debugInfo: Record<string, string> = {};
 
     private readonly thrusters: Thrusters = {
-        top: {firing: false, lastChanged: 0},
-        left: {firing: false, lastChanged: 0},
-        bottom: {firing: false, lastChanged: 0},
-        right: {firing: false, lastChanged: 0},
+        top: {
+            throttle: 0,
+            attemptedThrottle: 0,
+            pid: new ValvePidController(1, 1, 0),
+            lastChanged: 0,
+            sfx: createSfx(0.5)
+        },
+        left: {
+            throttle: 0,
+            attemptedThrottle: 0,
+            pid: new ValvePidController(1, 1, 0),
+            lastChanged: 0,
+            sfx: createSfx(0)
+        },
+        bottom: {
+            throttle: 0,
+            attemptedThrottle: 0,
+            pid: new ValvePidController(1, 1, 0),
+            lastChanged: 0,
+            sfx: createSfx(0.5)
+        },
+        right: {
+            throttle: 0,
+            attemptedThrottle: 0,
+            pid: new ValvePidController(1, 1, 0),
+            lastChanged: 0,
+            sfx: createSfx(1)
+        },
     };
 
     constructor(private readonly thrusterPower: number) {
@@ -399,19 +527,29 @@ class MovedObject {
         ctx.renderer.translate(-this.position.x, -this.position.y);
     }
 
-    update(dutyCycle: Vector2) {
-        const topDutyCycle = Math.max(0, dutyCycle.y);
-        const leftDutyCycle = Math.max(0, dutyCycle.x);
-        const rightDutyCycle = Math.max(0, -dutyCycle.x);
-        const bottomDutyCycle = Math.max(0, -dutyCycle.y);
+    update(dt: number, dutyCycle: Vector2) {
+        const topThrottle = Math.max(0, dutyCycle.y);
+        const leftThrottle = Math.max(0, dutyCycle.x);
+        const rightThrottle = Math.max(0, -dutyCycle.x);
+        const bottomThrottle = Math.max(0, -dutyCycle.y);
 
         this.debugInfo.DCX = dutyCycle.x.toFixed(2);
-        this.debugInfo.DCY = dutyCycle.y.toFixed(2);
+        this.debugInfo._DCY = dutyCycle.y.toFixed(2);
 
-        this.updateThruster(this.thrusters.top, topDutyCycle);
-        this.updateThruster(this.thrusters.left, leftDutyCycle);
-        this.updateThruster(this.thrusters.right, rightDutyCycle);
-        this.updateThruster(this.thrusters.bottom, bottomDutyCycle);
+        this.updateThruster(dt, this.thrusters.top, topThrottle);
+        this.updateThruster(dt, this.thrusters.left, leftThrottle);
+        this.updateThruster(dt, this.thrusters.right, rightThrottle);
+        this.updateThruster(dt, this.thrusters.bottom, bottomThrottle);
+
+        this.debugInfo.VTT = this.thrusters.top.pid.target?.toFixed(1) ?? "0";
+        this.debugInfo._VTL = this.thrusters.left.pid.target?.toFixed(1) ?? "0";
+        this.debugInfo._VTR = this.thrusters.right.pid.target?.toFixed(1) ?? "0";
+        this.debugInfo._VTB = this.thrusters.bottom.pid.target?.toFixed(1) ?? "0";
+
+        this.debugInfo.VAT = this.thrusters.top.throttle?.toFixed(1) ?? "0";
+        this.debugInfo._VAL = this.thrusters.left.throttle?.toFixed(1) ?? "0";
+        this.debugInfo._VAR = this.thrusters.right.throttle?.toFixed(1) ?? "0";
+        this.debugInfo._VAB = this.thrusters.bottom.throttle?.toFixed(1) ?? "0";
 
         this.updateAcceleration();
         this.updateVelocity();
@@ -422,40 +560,66 @@ class MovedObject {
         canvas.drawCustomDebug(ctx, "br", this.debugInfo);
     }
 
-    private updateThruster(state: ThrusterState, dutyCycle: number) {
-        const now = performance.now();
-
-        if (dutyCycle > 0.95) {
-            if (now - state.lastChanged > MovedObject.minimumThrusterTime) {
-                if (!state.firing) state.lastChanged = now;
-                state.firing = true;
-            }
-        } else if (dutyCycle < 0.4) {
-            if (now - state.lastChanged > MovedObject.minimumThrusterTime) {
-                if (state.firing) state.lastChanged = now;
-                state.firing = false;
-            }
+    private updateThruster(dt: number, state: ThrusterState, throttle: number) {
+        if (throttle >= 0.5) {
+            state.attemptedThrottle = Math.min(1, throttle);
         } else {
-            const smallerDutyCycle = Math.min(dutyCycle, 1 - dutyCycle);
-            const cycleDuration = MovedObject.minimumThrusterTime / smallerDutyCycle;
-            const thisDutyDuration = state.firing ? cycleDuration * dutyCycle : cycleDuration / dutyCycle;
+            const now = performance.now();
 
-            if (now > state.lastChanged + thisDutyDuration) {
-                state.lastChanged = now;
-                state.firing = !state.firing;
+            if (throttle < 0.2) {
+                if (now - state.lastChanged > MovedObject.minimumThrusterTime) {
+                    if (state.attemptedThrottle) state.lastChanged = now;
+                    state.attemptedThrottle = 0;
+                }
+            } else {
+                const smallerDutyCycle = Math.min(throttle, 1 - throttle);
+                const cycleDuration = MovedObject.minimumThrusterTime / smallerDutyCycle;
+                const thisDutyDuration = state.attemptedThrottle > 0 ? cycleDuration * throttle : cycleDuration / throttle;
+
+                if (now > state.lastChanged + thisDutyDuration) {
+                    state.lastChanged = now;
+
+                    if (state.attemptedThrottle > 0) {
+                        state.attemptedThrottle = 0;
+                    } else {
+                        state.attemptedThrottle = Math.max(0.5, throttle / 0.5);
+                    }
+                }
             }
         }
+
+        state.pid.target = Math.max(Math.min(state.attemptedThrottle, 1), 0);
+
+        const movement = clamp(state.pid.update(dt, state.throttle), -1, 1) * 0.3;
+
+        if (movement > 0) {
+            state.throttle = Math.max(0.5, state.throttle);
+            state.throttle += movement;
+            if (state.throttle > 1) state.throttle = 1;
+        } else if (movement < 0) {
+            state.throttle += movement;
+            if (state.throttle < 0.5) state.throttle = 0;
+        }
+
+        if (state.throttle) {
+            state.sfx.play(state.throttle);
+        } else if (state.previousThrottle) {
+            state.sfx.stop();
+        }
+
+        state.previousThrottle = state.throttle;
     }
 
     private renderThruster(ctx: CanvasFrameContext, state: ThrusterState, offset: Vector2) {
-        if (!state.firing) return;
-
         const direction = Math.atan2(offset.y, offset.x);
 
         const connectionPoint = offset.multiply(0.8).multiply(MovedObject.size.divide(2));
 
-        const leftOffset = new Vector2(MovedObject.thrusterGraphicsSize, 0).rotate(direction - MovedObject.thrusterGraphicsAngle);
-        const rightOffset = new Vector2(MovedObject.thrusterGraphicsSize, 0).rotate(direction + MovedObject.thrusterGraphicsAngle);
+        const leftOffset = new Vector2(MovedObject.thrusterGraphicsSize * state.throttle, 0)
+            .rotate(direction - MovedObject.thrusterGraphicsAngle * state.throttle);
+
+        const rightOffset = new Vector2(MovedObject.thrusterGraphicsSize * state.throttle, 0)
+            .rotate(direction + MovedObject.thrusterGraphicsAngle * state.throttle);
 
         path(ctx, () => {
             moveTo(ctx, connectionPoint);
@@ -472,17 +636,14 @@ class MovedObject {
         });
 
         draw(ctx, {
-            fill: radialGradient(ctx, connectionPoint, 0, connectionPoint, MovedObject.thrusterGraphicsSize, [
-                {colour: "#fff", time: 0},
-                {colour: "rgba(255,255,255,0)", time: 1}
-            ])
+            fill: "white"
         });
     }
 
     private updateAcceleration() {
         this.acceleration = new Vector2(
-            (this.thrusters.left.firing ? 1 : 0) - (this.thrusters.right.firing ? 1 : 0),
-            (this.thrusters.top.firing ? 1 : 0) - (this.thrusters.bottom.firing ? 1 : 0)
+            (this.thrusters.left.throttle) - (this.thrusters.right.throttle),
+            (this.thrusters.top.throttle) - (this.thrusters.bottom.throttle)
         ).multiply(this.thrusterPower);
     }
 
@@ -496,12 +657,15 @@ class MovedObject {
     }
 }
 
-const targets: Set<Target> = new Set(Array.from({length: 10}, () => new Target(
-    new Vector2(Math.random() * (window.innerWidth - 300) + 150, Math.random() * (window.innerHeight - 300) + 150)
-)));
+const targets: Set<Target> = new Set([
+    new Vector2(0.1, 0.1),
+    new Vector2(0.5, 0.5),
+    new Vector2(0.9, 0.1),
+    new Vector2(0.9, 0.9)
+].map(pos => new Target(pos.multiply(new Vector2(window.innerWidth, window.innerHeight)))));
 
-const movedObject = new MovedObject(0.1);
-const pidController = new PidController(1, 0.8, 1);
+const movedObject = new MovedObject(0.05);
+const pidController = new ObjectPidController(1, 0.8, 1);
 
 const graph = new MovementGraph();
 
@@ -522,22 +686,28 @@ canvas.start(ctx => {
     graph.render(ctx);
 
     //pidController.drawDebugLines(ctx);
-    //movedObject.drawDebugInfo(ctx);
-    canvas.drawDebug(ctx);
+    movedObject.drawDebugInfo(ctx);
+    //canvas.drawDebug(ctx);
 });
 
 const cm = canvas.getCoroutineManager();
 
 cm.startCoroutine(function* handlePhysics() {
+    let lastNow = performance.now();
+
     while (true) {
         const {ctx} = yield c.nextFrame();
+
+        const now = performance.now();
 
         pidController.target = Target.active.position;
 
         const movement = pidController.update(ctx.deltaTime, movedObject.readPosition());
         graph.movement = graph.overriddenMovement ?? movement;
-        movedObject.update(graph.overriddenMovement ?? movement);
+        movedObject.update(now - lastNow, graph.overriddenMovement ?? movement);
         graph.overriddenMovement = undefined;
+
+        lastNow = now;
     }
 });
 
