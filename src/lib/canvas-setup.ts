@@ -1,7 +1,7 @@
 import Vector2 from "./Vector2";
 import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
 
-type CanvasFrameRenderer = (ctx: CanvasFrameContext) => void;
+type CanvasFrameRenderer = (ctx: InteractiveCanvasFrameContext) => void;
 
 class MouseState {
     readonly left: boolean;
@@ -92,6 +92,18 @@ export interface CanvasFrameContext {
     renderer: CanvasRenderingContext2D;
 
     /**
+     * The size in pixels of the canvas
+     */
+    screenSize: Vector2;
+
+    /**
+     * An array of functions that will be called with no parameters when the object is disposed
+     */
+    disposeListeners: Function[];
+}
+
+export interface InteractiveCanvasFrameContext extends CanvasFrameContext {
+    /**
      * The amount of seconds since the last frame
      */
     deltaTime: number;
@@ -105,11 +117,6 @@ export interface CanvasFrameContext {
      * The current FPS with no smoothing
      */
     fps: number;
-
-    /**
-     * The size in pixels of the canvas
-     */
-    screenSize: Vector2;
 
     /**
      * `.left`, `.mid`, `.right` each set with either `true` or `false` depending on if that mouse button has been
@@ -130,6 +137,12 @@ export interface CanvasFrameContext {
      * released. (Falling edge)
      */
     mouseReleased: MouseState;
+
+    /**
+     * The amount that the mouse has scrolled since the last frame.
+     * A negative value means the user scrolled down, and positive means the user scrolled up.
+     */
+    mouseScroll: number;
 
     /**
      * An object containing each Key name and its state, as well as each keyCode and its state
@@ -155,14 +168,9 @@ export interface CanvasFrameContext {
      * Set to `true` in any frame where the mouse has moved since the last frame.
      */
     mouseMoved: boolean;
-
-    /**
-     * An array of functions that will be called with no parameters when the object is disposed
-     */
-    disposeListeners: Function[];
 }
 
-class CanvasFrameContextFactory {
+class InteractiveCanvasFrameContextFactory {
     private _previousFrameTime: number = -1;
     private _currentFrameTime: number = -1;
     private _mouseState: MouseState = new MouseState(false, false, false);
@@ -171,6 +179,7 @@ class CanvasFrameContextFactory {
     private _previousKeyState: KeyState = this._keyState;
     private _mousePos: Vector2 = new Vector2();
     private _previousMousePos: Vector2 = this._mousePos;
+    private _scrollIntegral: number = 0;
     private readonly _canv: HTMLCanvasElement;
     private readonly _ctx: CanvasRenderingContext2D;
     private readonly _startTime = performance.now() / 1000;
@@ -183,6 +192,7 @@ class CanvasFrameContextFactory {
         canv.addEventListener("mouseup", this.handleMouseUp.bind(this));
         canv.addEventListener("mousemove", this.handleMouseMove.bind(this));
         canv.addEventListener("keydown", this.handleKeyChange.bind(this, true));
+        canv.addEventListener("wheel", this.handleMouseWheel.bind(this));
         canv.addEventListener("keyup", this.handleKeyChange.bind(this, false));
     }
 
@@ -233,9 +243,10 @@ class CanvasFrameContextFactory {
         this._previousMousePos = this._mousePos;
         this._previousMouseState = this._mouseState;
         this._previousKeyState = this._keyState;
+        this._scrollIntegral = 0;
     }
 
-    createContext(): CanvasFrameContext {
+    createContext(): InteractiveCanvasFrameContext {
         const deltaTime = (this._currentFrameTime - this._previousFrameTime) / 1000;
 
         return {
@@ -248,15 +259,16 @@ class CanvasFrameContextFactory {
             screenSize: new Vector2(this._canv.width, this._canv.height),
 
             mouseDown: this._mouseState,
-            mousePressed: CanvasFrameContextFactory.risingEdgeMouse(this._mouseState, this._previousMouseState),
-            mouseReleased: CanvasFrameContextFactory.fallingEdgeMouse(this._mouseState, this._previousMouseState),
+            mousePressed: InteractiveCanvasFrameContextFactory.risingEdgeMouse(this._mouseState, this._previousMouseState),
+            mouseReleased: InteractiveCanvasFrameContextFactory.fallingEdgeMouse(this._mouseState, this._previousMouseState),
 
             mousePos: this._mousePos,
             mouseMoved: !this._mousePos.equal(this._previousMousePos),
+            mouseScroll: this._scrollIntegral,
 
             keyDown: this._keyState,
-            keyPressed: CanvasFrameContextFactory.risingEdgeKeys(this._keyState, this._previousKeyState),
-            keyReleased: CanvasFrameContextFactory.fallingEdgeKeys(this._keyState, this._previousKeyState),
+            keyPressed: InteractiveCanvasFrameContextFactory.risingEdgeKeys(this._keyState, this._previousKeyState),
+            keyReleased: InteractiveCanvasFrameContextFactory.fallingEdgeKeys(this._keyState, this._previousKeyState),
 
             disposeListeners: []
         };
@@ -297,6 +309,10 @@ class CanvasFrameContextFactory {
         this._mousePos = mousePagePos.subtract(offset);
     }
 
+    private handleMouseWheel(ev: WheelEvent) {
+        this._scrollIntegral += ev.deltaY;
+    }
+
     private handleKeyChange(state: boolean, ev: KeyboardEvent) {
         this._keyState = this._keyState.with(ev.key, state);
     }
@@ -318,22 +334,25 @@ export interface Collider {
 }
 
 export class RectangleCollider implements Collider {
-    constructor(public readonly tl: Vector2, public readonly br: Vector2) {
+    private readonly halfSize: Vector2;
+    private readonly offset: Vector2;
+
+    constructor(topLeft: Vector2, bottomRight: Vector2) {
+        this.halfSize = bottomRight.subtract(topLeft).divide(2);
+        this.offset = topLeft.add(this.halfSize);
     }
 
     getSignedDistance(point: Vector2): number {
-        const halfSize = this.br.subtract(this.tl).divide(2);
-        const samplePosition = point.subtract(this.tl).subtract(halfSize);
+        const samplePosition = point.subtract(this.offset);
 
         // based on https://www.ronja-tutorials.com/post/034-2d-sdf-basics/#rectangle
-        const componentWiseEdgeDistance = samplePosition.abs().subtract(halfSize);
+        const componentWiseEdgeDistance = samplePosition.abs().subtract(this.halfSize);
 
         const outsideDistance = Vector2.max(componentWiseEdgeDistance, Vector2.zero).length();
         const insideDistance = Math.min(Math.max(componentWiseEdgeDistance.x, componentWiseEdgeDistance.y), 0);
 
         return outsideDistance + insideDistance;
     }
-
 }
 
 type CoroutineAwaitResult_Continue<T> = T extends (void | never | undefined) ? { state: true | "aborted", checkCount?: number } : { state: true | "aborted", data: T, checkCount?: number };
@@ -360,7 +379,7 @@ interface CoroutineAwaitBase<T> {
      * This function is called every frame, with that frame's context. As it is in the hot path, it should
      * ideally be well optimised and run fast.
      */
-    shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T>;
+    shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T>;
 }
 
 interface NormalCoroutineAwait<T> extends CoroutineAwaitBase<T> {
@@ -431,6 +450,23 @@ interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     getTraces(): readonly string[];
 }
 
+export interface MarkedCoroutineAwait<Symbol extends symbol> {
+    marker: Symbol;
+}
+
+interface MarkedCoroutineAwait_Dispose extends MarkedCoroutineAwait<typeof disposeFunctionMarker> {
+    callback(): void;
+}
+
+type MarkedCoroutineAwaitTypes = MarkedCoroutineAwait_Dispose;
+
+function isMarkedCoroutineAwait(awaiter: unknown): awaiter is MarkedCoroutineAwait<symbol> {
+    if (!awaiter) return false;
+    if (typeof awaiter !== "object") return false;
+    const casted = awaiter as MarkedCoroutineAwait<symbol>;
+    return typeof casted.marker === "symbol";
+}
+
 export type CoroutineAwait<T> = NormalCoroutineAwait<T> | NestCoroutineAwait<T>;
 
 function isNestCoroutineAwait<T>(awaiter: CoroutineAwait<T>): awaiter is NestCoroutineAwait<T> {
@@ -446,7 +482,7 @@ export interface CoroutineContext {
     /**
      * The context of the next frame that will be rendered
      */
-    ctx: CanvasFrameContext;
+    ctx: InteractiveCanvasFrameContext;
 
     /**
      * Whether or not the awaiter was aborted by its signal
@@ -460,7 +496,7 @@ export interface CoroutineContext {
 }
 
 type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
-type GeneratorType = Generator<AwaiterCastable, void, CoroutineContext>;
+type GeneratorType = Generator<AwaiterCastable | MarkedCoroutineAwait<symbol>, void, CoroutineContext>;
 
 function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable): CoroutineAwait<unknown> {
     if (typeof awaiterCastable === "function") {
@@ -475,17 +511,65 @@ function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable)
 export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
 export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
 
+export interface Setter<in T> {
+    set(value: T): void;
+}
+
+export interface Getter<out T> {
+    get(): T;
+}
+
+export type Dereffable<T> = T | Getter<T>;
+export type Reference<T> = Setter<T> & Getter<T>;
+
+class ReferenceImpl<T> implements Setter<T>, Getter<T> {
+    constructor(private value: T) {
+    }
+
+    set(value: T) {
+        this.value = value;
+    }
+
+    get(): T {
+        return this.value;
+    }
+}
+
+function isGetter<T>(value: T | Getter<T>): value is Getter<T> {
+    if (!value) return false;
+    if (typeof value !== "object") return false;
+    const casted = value as Getter<T>;
+    return typeof casted.get === "function";
+}
+
+/**
+ * Creates a reference from the initial value.
+ * If the initial value is a reference already, its value is cloned into a new reference.
+ */
+export function ref<T>(initialValue: Dereffable<T>): Reference<T> {
+    const value = deref(initialValue);
+    return new ReferenceImpl(value);
+}
+
+/**
+ * Returns the value in the reference, or the value if it is passed directly.
+ */
+export function deref<T>(reference: Dereffable<T>): T {
+    if (isGetter(reference)) return reference.get();
+    return reference;
+}
+
 /**
  * Various coroutine awaiters
  *
  * @remarks You can also make your own awaiter - it just needs to be some function that returns a `CoroutineAwait`.
  */
-export const c = {
+export const waitUntil = {
     /**
      * Passes the result of each awaiter to `handler`, which reduces them down to one result.
      *
      * This function's purpose is to be wrapped by other awaiters to allow nesting of coroutines. Note that this
-     * function MUST be used for situations where a nested coroutine is possible (like waitForFirst, waitForAll etc),
+     * function MUST be used for situations where a nested coroutine is possible (like `.one`, `.all`, etc),
      * as it can handle edge cases with coroutine awaiters that cannot be handled in third party code.
      *
      * @param identifier - Identifies the awaiter, used for debugging
@@ -493,7 +577,7 @@ export const c = {
      * @param handler - Function that takes in the results, in order of passing, and reduces them down to a single one. Called every frame.
      * @param errorHandler - Called when a child awaiter throws an error, similar to `catch`. Return a result if it was handled, or false to propagate the error up.
      */
-    nest<T>(identifier: string, awaiters: AwaiterCastable[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
+    nested<T>(identifier: string, awaiters: AwaiterCastable[], handler: NestHandler<T>, errorHandler?: NestErrorHandler<T>): CoroutineAwait<T> {
         if (awaiters.length === 0) throw new Error("Must have at least one awaiter");
 
         const castedAwaiters = new Map<AwaiterCastable, CoroutineAwait<unknown>>();
@@ -516,7 +600,7 @@ export const c = {
                 traces = initTraces;
                 cm = coroutineManager;
             },
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
                 const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
 
                 let lastTraceAwaiter: CoroutineAwait<unknown>, lastTraceIndex: number;
@@ -582,8 +666,8 @@ export const c = {
      * - If two complete at the same time, will pick the first one passed
      * - If the passed signal is aborted, will return with data `-1`
      */
-    waitForFirst(awaiters: AwaiterCastable[], signal?: AbortSignal): CoroutineAwait<number> {
-        return this.nest("c.waitForFirst", awaiters, results => {
+    one(awaiters: AwaiterCastable[], signal?: AbortSignal): CoroutineAwait<number> {
+        return waitUntil.nested("waitUntil.one", awaiters, results => {
             if (signal?.aborted) return {state: "aborted", data: -1};
 
             for (let i = 0; i < results.length; i++) {
@@ -602,8 +686,8 @@ export const c = {
      * Waits until all awaiters are complete, or one aborts.
      * If an awaiter aborts, its index is returned. Otherwise, -1 is returned.
      */
-    waitForAll(awaiters: CoroutineAwait<unknown>[], signal?: AbortSignal): CoroutineAwait<number> {
-        return this.nest("c.waitForAll", awaiters, results => {
+    all(awaiters: AwaiterCastable[], signal?: AbortSignal): CoroutineAwait<number> {
+        return waitUntil.nested("waitUntil.all", awaiters, results => {
             if (signal?.aborted) return {state: "aborted", data: -1};
 
             let allComplete = true;
@@ -630,8 +714,8 @@ export const c = {
      */
     leftMousePressed(): CoroutineAwait<void> {
         return {
-            identifier: "c.leftMousePressed",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.leftMousePressed",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mousePressed.left};
             }
@@ -643,8 +727,8 @@ export const c = {
      */
     rightMousePressed(): CoroutineAwait<void> {
         return {
-            identifier: "c.rightMousePressed",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.rightMousePressed",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mousePressed.right};
             }
@@ -656,8 +740,8 @@ export const c = {
      */
     leftMouseReleased(): CoroutineAwait<void> {
         return {
-            identifier: "c.leftMouseReleased",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.leftMouseReleased",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mouseReleased.left};
             }
@@ -669,8 +753,8 @@ export const c = {
      */
     keyPressed(key: string): CoroutineAwait<void> {
         return {
-            identifier: "c.keyPressed",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.keyPressed",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.keyPressed.get(key)};
             }
@@ -682,8 +766,8 @@ export const c = {
      */
     keyReleased(key: string): CoroutineAwait<void> {
         return {
-            identifier: "c.keyReleased",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.keyReleased",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.keyReleased.get(key)};
             }
@@ -695,8 +779,8 @@ export const c = {
      */
     mouseMoved(): CoroutineAwait<void> {
         return {
-            identifier: "c.mouseMoved",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.mouseMoved",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
                 return {state: ctx.mouseMoved};
             }
@@ -708,15 +792,15 @@ export const c = {
      * @param shape A list of points that creates an outline.
      * @param mustStartOutside When true, the mouse has to have been outside before the awaiter can return.
      */
-    mouseEntered(shape: Collider, mustStartOutside = false): CoroutineAwait<void> {
+    mouseEntered(shape: Dereffable<Collider>, mustStartOutside = false): CoroutineAwait<void> {
         let hasBeenOutside = !mustStartOutside;
 
         return {
-            identifier: "c.mouseEntered",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.mouseEntered",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
 
-                const distance = shape.getSignedDistance(ctx.mousePos);
+                const distance = deref(shape).getSignedDistance(ctx.mousePos);
 
                 if (hasBeenOutside) {
                     if (distance <= 0) return {state: true};
@@ -734,15 +818,15 @@ export const c = {
      * @param shape A list of points that creates an outline.
      * @param mustStartInside When true, the mouse has to have been inside before the awaiter can return.
      */
-    mouseExited(shape: Collider, mustStartInside = false): CoroutineAwait<void> {
+    mouseExited(shape: Dereffable<Collider>, mustStartInside = false): CoroutineAwait<void> {
         let hasBeenInside = !mustStartInside;
 
         return {
-            identifier: "c.mouseEntered",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.mouseEntered",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
 
-                const distance = shape.getSignedDistance(ctx.mousePos);
+                const distance = deref(shape).getSignedDistance(ctx.mousePos);
 
                 if (hasBeenInside) {
                     if (distance > 0) return {state: true};
@@ -751,6 +835,20 @@ export const c = {
                 }
 
                 return {state: false};
+            }
+        };
+    },
+
+    /**
+     * Waits until the user scrolls
+     */
+    mouseScrolled(): CoroutineAwait<void> {
+        return {
+            identifier: "waitUntil.mouseScrolled",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
+                if (signal.aborted) return {state: "aborted"};
+
+                return {state: ctx.mouseScroll !== 0};
             }
         };
     },
@@ -774,7 +872,7 @@ export const c = {
         });
 
         return {
-            identifier: "c.delay",
+            identifier: "waitUntil.delay",
             delay,
             shouldContinue() {
                 if (signal?.aborted) return {state: "aborted"};
@@ -788,7 +886,7 @@ export const c = {
      */
     nextFrame(): CoroutineAwait<void> {
         return {
-            identifier: "c.nextFrame",
+            identifier: "waitUntil.nextFrame",
             shouldContinue() {
                 return {state: true};
             }
@@ -798,10 +896,10 @@ export const c = {
     /**
      * Calls the specified check function each frame, and completes when it returns true
      */
-    check(chk: (ctx: CanvasFrameContext) => boolean): CoroutineAwait<void> {
+    check(chk: (ctx: InteractiveCanvasFrameContext) => boolean): CoroutineAwait<void> {
         return {
-            identifier: "c.check",
-            shouldContinue(ctx: CanvasFrameContext, signal: AbortSignal) {
+            identifier: "waitUntil.check",
+            shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal?.aborted) return {state: "aborted"};
                 return {state: chk(ctx)};
             }
@@ -821,13 +919,15 @@ function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
     return casted.abortController instanceof AbortController && typeof casted.awaiter === "object";
 }
 
+const disposeFunctionMarker = Symbol("dispose");
+
 export interface CoroutineManager {
     /**
      * Begins a new coroutine. Code runs before each frame is rendered.
      *
      * - The point of this method is to create a function that can have delays that depend on what is happening
      *   inside the canvas, e.g. waiting for a mouse button to be pressed, or a key moved. There is various
-     *   methods to do this inside the `c` export, which you can `yield` inside a generator function passed here.
+     *   methods to do this inside the `waitFor` export, which you can `yield` inside a generator function passed here.
      *   `yield` used inside this function acts similarly to `await` inside an async function.
      * - Note that any code inside this function (other than in the `yield` statements) will run synchronously
      *   before the next frame. The `ctx` value returned by `yield`s is the same value that is used in the next
@@ -845,7 +945,7 @@ export interface CoroutineManager {
      *
      * - The point of this method is to create a function that can have delays that depend on what is happening
      *   inside the canvas, e.g. waiting for a mouse button to be pressed, or a key moved. There is various
-     *   methods to do this inside the `c` export, which you can `yield` inside a generator function passed here.
+     *   methods to do this inside the `waitFor` export, which you can `yield` inside a generator function passed here.
      *   `yield` used inside this function acts similarly to `await` inside an async function.
      * - Note that any code inside this function (other than in the `yield` statements) will run synchronously
      *   before the next frame. The `ctx` value returned by `yield`s is the same value that is used in the next
@@ -858,9 +958,17 @@ export interface CoroutineManager {
      * @returns An abort controller to cancel the coroutine, and an awaiter that completes when this coroutine completes, for nesting.
      */
     startCoroutine(identifier: string, fn: CoroutineGeneratorFunction): StartCoroutineResult;
+
+    /**
+     * The callback supplied to this function will be called when the coroutine is about to be disposed.
+     * This will be in one of the `yield` statements.
+     * That `yield` statement will never complete.
+     */
+    hookDispose(callback: () => void): MarkedCoroutineAwait<typeof disposeFunctionMarker>;
 }
 
 interface StatefulCoroutine {
+    disposeHandlers: Set<() => void>;
     coroutine: GeneratorType;
     identifier: string;
     traces: string[];
@@ -881,7 +989,7 @@ function getCoroutineName(baseName: string) {
         return name[0].toLowerCase() + name.substring(1);
     }
 
-    return name;
+    return baseName;
 }
 
 class CoroutineManagerImpl implements CoroutineManager {
@@ -902,7 +1010,7 @@ class CoroutineManagerImpl implements CoroutineManager {
         return this.lastCheckCount;
     }
 
-    frame(ctx: CanvasFrameContext) {
+    frame(ctx: InteractiveCanvasFrameContext) {
         this.lastCheckCount = this.checkCount;
         this.checkCount = 0;
 
@@ -931,7 +1039,8 @@ class CoroutineManagerImpl implements CoroutineManager {
             traceShiftCount: 0,
             onComplete() {
                 isComplete = true
-            }
+            },
+            disposeHandlers: new Set()
         };
 
         this._coroutines.add(state);
@@ -976,7 +1085,16 @@ class CoroutineManagerImpl implements CoroutineManager {
         };
     }
 
+    public hookDispose(callback: () => void): MarkedCoroutineAwait_Dispose {
+        return {
+            marker: disposeFunctionMarker,
+            callback
+        };
+    }
+
     private disposeCoroutine(state: StatefulCoroutine) {
+        state.disposeHandlers.forEach(handler => handler());
+
         if (process.env.NODE_ENV !== "production") {
             console.debug("Coroutine", `"${state.identifier}"`, "has finished running");
         }
@@ -986,7 +1104,7 @@ class CoroutineManagerImpl implements CoroutineManager {
         state.onComplete();
     }
 
-    private handleCoroutine(ctx: CanvasFrameContext, state: StatefulCoroutine) {
+    private handleCoroutine(ctx: InteractiveCanvasFrameContext, state: StatefulCoroutine) {
         if (state.waitingForDelay) return;
 
         if (state.lastResult?.delay) {
@@ -1014,10 +1132,24 @@ class CoroutineManagerImpl implements CoroutineManager {
 
                 let done = false, value: CoroutineAwait<unknown> | void;
                 try {
-                    const res = state.coroutine.next({ctx, aborted, data});
+                    let res = state.coroutine.next({ctx, aborted, data});
                     done = res.done;
 
-                    value = res.value ? getAwaiter(this, res.value) : undefined;
+                    while (res.value && isMarkedCoroutineAwait(res.value)) {
+                        const value = res.value as MarkedCoroutineAwaitTypes;
+
+                        switch (value.marker) {
+                            case disposeFunctionMarker:
+                                state.disposeHandlers.add(value.callback);
+                                break;
+                            default:
+                                throw new Error(`Invalid marker ${String(value.marker)}. This is a bug.`);
+                        }
+
+                        res = state.coroutine.next({ctx, aborted, data});
+                    }
+
+                    value = res.value ? getAwaiter(this, res.value as AwaiterCastable) : undefined;
                 } finally {
                     if (state.lastResult) {
                         state.traces.splice(0, state.traceShiftCount);
@@ -1055,19 +1187,70 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 }
 
+export type EventHandler<Args extends unknown[]> = (...args: Args) => void;
+
+class MiniEventEmitter<Events extends Record<string, unknown[]>> {
+    private readonly handlers = new Map<keyof Events, Set<EventHandler<unknown[]>>>();
+
+    addListener<Event extends keyof Events>(event: Event, handler: EventHandler<Events[Event]>) {
+        const handlersSet = this.initAndGetHandlersSet(event);
+        handlersSet.add(handler);
+
+        return () => {
+            handlersSet.delete(handler);
+            this.cleanupHandlersSet(event);
+        };
+    }
+
+    emit<Event extends keyof Events>(event: Event, ...params: Events[Event]) {
+        const handlersSet = this.handlers.get(event);
+        if (!handlersSet) return;
+
+        handlersSet.forEach(handler => handler(...params));
+    }
+
+    private initAndGetHandlersSet(event: keyof Events) {
+        const existing = this.handlers.get(event);
+        if (existing) return existing;
+
+        const newSet = new Set<EventHandler<unknown[]>>();
+        this.handlers.set(event, newSet);
+        return newSet;
+    }
+
+    private cleanupHandlersSet(event: keyof Events) {
+        const set = this.handlers.get(event);
+        if (!set || set.size > 0) return;
+        this.handlers.delete(event);
+    }
+}
+
+function getListenerAdder<Events extends Record<string, unknown[]>>(emitter: MiniEventEmitter<Events>): MiniEventEmitter<Events>["addListener"] {
+    return emitter.addListener.bind(emitter);
+}
+
+export interface Canvas {
+    get size(): Vector2;
+}
+
 interface CursorStackItem {
     index: number;
     cursor: string;
 }
 
-export default class Canvas {
+type InteractiveCanvasEvents = {
+    resize: [Vector2];
+}
+
+export default class InteractiveCanvas implements Canvas {
     private readonly _canv: HTMLCanvasElement;
 
+    private readonly eventEmitter = new MiniEventEmitter<InteractiveCanvasEvents>();
+    public readonly addListener = getListenerAdder(this.eventEmitter);
     private _running: boolean = false;
     private _trigger: RenderTrigger = RenderTrigger.Always;
-    private _contextFactory: CanvasFrameContextFactory;
+    private _contextFactory: InteractiveCanvasFrameContextFactory;
     private _callback: CanvasFrameRenderer | null = null;
-
     private _defaultPrevented: DefaultPrevented = {
         mousedown: false,
         mouseup: false,
@@ -1075,16 +1258,14 @@ export default class Canvas {
         keydown: false,
         keyup: false
     };
-
     private _defaultKeysPrevented: KeyState = new KeyState();
-
     private readonly _coroutineManager = new CoroutineManagerImpl();
     private readonly cursorStack: CursorStackItem[] = [];
     private cursorUpdateSchedule = 0;
 
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
-        this._contextFactory = new CanvasFrameContextFactory(this._canv);
+        this._contextFactory = new InteractiveCanvasFrameContextFactory(this._canv);
 
         window.addEventListener("resize", this.handleResize.bind(this));
         this.handleResize();
@@ -1110,6 +1291,10 @@ export default class Canvas {
                     "This message will only be shown in development builds.");
             }
         }
+    }
+
+    get size() {
+        return new Vector2(this._canv.width, this._canv.height);
     }
 
     get cursor() {
@@ -1191,7 +1376,7 @@ export default class Canvas {
         return this._coroutineManager;
     }
 
-    public drawDebug(ctx: CanvasFrameContext) {
+    public drawDebug(ctx: InteractiveCanvasFrameContext) {
         this.drawCustomDebug(ctx, "tl", {
             FPS: `${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`,
             M: ctx.mousePos.toString(),
@@ -1211,7 +1396,7 @@ export default class Canvas {
             const sameLine = name.startsWith("_");
 
             if (!sameLine && messagesToWrite.length > 0) {
-                offsetY = Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
+                offsetY = InteractiveCanvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
                 messagesToWrite.length = 0;
             }
 
@@ -1220,7 +1405,7 @@ export default class Canvas {
         }
 
         if (messagesToWrite.length > 0) {
-            Canvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
+            InteractiveCanvas.drawDebugLine(ctx, corner, offsetY, messagesToWrite);
         }
     }
 
@@ -1241,13 +1426,15 @@ export default class Canvas {
         this.scheduleUrgentCursorUpdate();
 
         return () => {
+            if (item.index === -1) return;
             this.deleteCursorStackItem(item.index);
             this.scheduleNonUrgentCursorUpdate();
         };
     }
 
     private deleteCursorStackItem(index: number) {
-        this.cursorStack.splice(index, 1);
+        const [removedCursor] = this.cursorStack.splice(index, 1);
+        removedCursor.index = -1;
 
         for (const item of this.cursorStack.slice(index)) {
             item.index--;
@@ -1292,6 +1479,8 @@ export default class Canvas {
         const parentRect = parent.getBoundingClientRect();
         this._canv.width = parentRect.width;
         this._canv.height = parentRect.height;
+
+        this.eventEmitter.emit("resize", this.size);
     }
 
     private handleTrigger(cause: RenderTrigger) {
@@ -1307,7 +1496,7 @@ export default class Canvas {
      * Don't use this method—use one of the asynchronous methods instead.
      */
     private updateCursorFromStack() {
-        this.cursor = this.cursorStack[0]?.cursor ?? "default";
+        this.cursor = this.cursorStack.at(-1)?.cursor ?? "default";
     }
 
     /**
@@ -1331,5 +1520,31 @@ export default class Canvas {
     private scheduleCursorUpdate(frames: number) {
         if (!this.cursorUpdateSchedule) this.cursorUpdateSchedule = frames + 1;
         else this.cursorUpdateSchedule = Math.min(this.cursorUpdateSchedule, frames + 1);
+    }
+}
+
+export class OffscreenCanvas implements Canvas {
+    private readonly canvas = document.createElement("canvas");
+    private readonly ctx = this.canvas.getContext("2d");
+
+    constructor(size: Vector2) {
+        this.setSizeAndClear(size);
+    }
+
+    get size() {
+        return new Vector2(this.canvas.width, this.canvas.height);
+    }
+
+    setSizeAndClear(newSize: Vector2) {
+        this.canvas.width = newSize.x;
+        this.canvas.height = newSize.y;
+    }
+
+    getContext(): CanvasFrameContext {
+        return {
+            renderer: this.ctx,
+            screenSize: this.size,
+            disposeListeners: []
+        };
     }
 }

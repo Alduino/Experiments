@@ -230,4 +230,11 @@ export default class Vector2 {
     negate() {
         return new Vector2(-this.x, -this.y);
     }
+
+    round() {
+        return new Vector2(
+            Math.round(this.x),
+            Math.round(this.y)
+        );
+    }
 }

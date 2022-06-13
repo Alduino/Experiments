@@ -1,4 +1,4 @@
-import Canvas, {c, CanvasFrameContext, CoroutineContext} from "../../lib/canvas-setup";
+import InteractiveCanvas, {waitUntil, CanvasFrameContext, CoroutineContext} from "../../lib/canvas-setup";
 import {circle, clear, draw, line, moveTo, path, textWithBackground} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
 import {Bezier} from "bezier-js";
@@ -372,7 +372,7 @@ const roads = new Set<Road>([
 
 let isLocked = false;
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 canvas.setDefaultPrevented("contextmenu", true);
 canvas.preventKeyDefault("Control", true);
 
@@ -398,20 +398,20 @@ function persistent(draw: (ctx: CanvasFrameContext) => void) {
     cm.startCoroutine(function* persistent() {
 
         for (let opacity = 0; opacity < 1; opacity += 0.25) {
-            const {ctx} = yield c.nextFrame();
+            const {ctx} = yield waitUntil.nextFrame();
             ctx.renderer.globalAlpha = opacity;
             draw(ctx);
             ctx.renderer.globalAlpha = 1;
         }
 
         while (drawing) {
-            const {ctx} = yield c.nextFrame();
+            const {ctx} = yield waitUntil.nextFrame();
 
             draw(ctx);
         }
 
         for (let opacity = 1; opacity >= 0; opacity -= 0.25) {
-            const {ctx} = yield c.nextFrame();
+            const {ctx} = yield waitUntil.nextFrame();
             ctx.renderer.globalAlpha = opacity;
             draw(ctx);
             ctx.renderer.globalAlpha = 1;
@@ -430,13 +430,13 @@ function persistent(draw: (ctx: CanvasFrameContext) => void) {
 function buttons(pos: Vector2, title: string, names: string[]) {
     let pressedButton: number | null = null;
 
-    return c.nest("buttons", [
+    return waitUntil.nested("buttons", [
         cm.startCoroutine(function* buttonsDrawer() {
             let oldCursor: string | null;
             let wasHighlighted = false;
 
             while (pressedButton === null) {
-                const {ctx} = yield c.nextFrame();
+                const {ctx} = yield waitUntil.nextFrame();
 
                 let somethingHighlighted = false;
 
@@ -495,10 +495,10 @@ function buttons(pos: Vector2, title: string, names: string[]) {
 
 cm.startCoroutine(function* addLane() {
     while (true) {
-        let x: CoroutineContext = yield c.waitForFirst([
-            c.mouseMoved(),
-            c.keyPressed("Alt"),
-            c.keyReleased("Alt")
+        let x: CoroutineContext = yield waitUntil.one([
+            waitUntil.mouseMoved(),
+            waitUntil.keyPressed("Alt"),
+            waitUntil.keyReleased("Alt")
         ]);
 
         if (isLocked) continue;
@@ -538,16 +538,16 @@ cm.startCoroutine(function* addLane() {
                 tooltip(ctx, "Add lane");
             });
 
-            x = yield c.waitForFirst([
-                c.leftMousePressed(),
-                c.check(ctx => {
+            x = yield waitUntil.one([
+                waitUntil.leftMousePressed(),
+                waitUntil.check(ctx => {
                     const mousePosM = ctx.mousePos.multiply(PX_TO_M);
 
                     const check = getClosestCurveWithMaximum(laneCurves, mousePosM, SELECT_DISTANCE);
                     return !check || check.idx !== closestLaneCurve.idx;
                 }),
-                c.keyPressed("Control"),
-                c.keyReleased("Control")
+                waitUntil.keyPressed("Control"),
+                waitUntil.keyReleased("Control")
             ]);
 
             closeInfo();
@@ -579,7 +579,7 @@ cm.startCoroutine(function* addLane() {
             const closestEnd = closestLaneIdx < roadLaneCount / 2 ? "left" : "right";
             road.addLane(closestLaneIdx, lane, closestEnd);
 
-            yield c.nextFrame();
+            yield waitUntil.nextFrame();
 
             isLocked = false;
         }
@@ -588,7 +588,7 @@ cm.startCoroutine(function* addLane() {
 
 cm.startCoroutine(function* createRoad() {
     while (true) {
-        let x = yield c.leftMousePressed();
+        let x = yield waitUntil.leftMousePressed();
 
         if (!isLocked) {
             isLocked = true;
@@ -599,12 +599,12 @@ cm.startCoroutine(function* createRoad() {
                 wipRoad.draw(ctx);
             });
 
-            x = yield c.waitForFirst([
-                c.waitForAll([
-                    c.check(ctx => wipRoad.validate(ctx.mousePos.multiply(PX_TO_M)).valid),
-                    c.leftMousePressed()
+            x = yield waitUntil.one([
+                waitUntil.all([
+                    waitUntil.check(ctx => wipRoad.validate(ctx.mousePos.multiply(PX_TO_M)).valid),
+                    waitUntil.leftMousePressed()
                 ]),
-                c.rightMousePressed()
+                waitUntil.rightMousePressed()
             ]);
 
             hideWipRoad();
@@ -614,7 +614,7 @@ cm.startCoroutine(function* createRoad() {
                 continue;
             }
 
-            yield c.nextFrame();
+            yield waitUntil.nextFrame();
 
             const road = wipRoad.build(x.ctx.mousePos.multiply(PX_TO_M));
             isLocked = false;

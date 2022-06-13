@@ -1,9 +1,9 @@
-import Canvas, {c, CanvasFrameContext} from "./canvas-setup";
+import InteractiveCanvas, {waitUntil, CanvasFrameContext} from "./canvas-setup";
 import Vector2 from "./Vector2";
 import {clear, quadraticCurve} from "./imgui";
 import {v4} from "uuid";
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 const coroutineManager = canvas.getCoroutineManager();
 
 class FlowItem {
@@ -150,30 +150,30 @@ function handleSingleClick(ctx: CanvasFrameContext) {
         const targetItem = hoveredItem;
 
         coroutineManager.startCoroutine(function* handleCreateNewDrag(signal) {
-            let r = yield c.mouseMoved(signal);
+            let r = yield waitUntil.mouseMoved(signal);
             const newItem = new FlowItem(r.ctx.mousePos);
             targetItem.children.add(newItem);
 
-            yield c.waitForFirst([
+            yield waitUntil.one([
                 coroutineManager.startCoroutine("handleMouseDrag.impl", function* (signal) {
                     while (true) {
-                        const {ctx} = yield c.mouseMoved(signal);
+                        const {ctx} = yield waitUntil.mouseMoved(signal);
                         newItem.pos = ctx.mousePos;
                     }
                 }).awaiter,
-                c.leftMouseReleased()
+                waitUntil.leftMouseReleased()
             ], signal);
         });
     } else if (selectedItem && ctx.mouseDown.left) {
         coroutineManager.startCoroutine(function* handleMouseDrag(signal) {
-            yield c.waitForFirst([
+            yield waitUntil.one([
                 coroutineManager.startCoroutine("handleMouseDrag.impl", function* (signal) {
                     while (true) {
-                        const {ctx} = yield c.mouseMoved(signal);
+                        const {ctx} = yield waitUntil.mouseMoved(signal);
                         selectedItem.pos = ctx.mousePos;
                     }
                 }).awaiter,
-                c.leftMouseReleased()
+                waitUntil.leftMouseReleased()
             ], signal);
         });
     }
@@ -330,17 +330,17 @@ function drawFlowItems(ctx: CanvasFrameContext, items: Set<FlowItem>) {
 // Multi mouse click
 coroutineManager.startCoroutine(function* handleMouseClick(signal: AbortSignal) {
     while (!signal.aborted) {
-        const firstPress = yield c.leftMousePressed(signal);
+        const firstPress = yield waitUntil.leftMousePressed(signal);
         if (firstPress.aborted) break;
 
         let clickCount = 1, lastCtx = firstPress.ctx;
 
         while (!signal.aborted) {
             // wait until the button is pressed again, but don't continue if the mouse is moved first
-            const nextPress = yield c.waitForFirst([
-                c.leftMousePressed(),
-                c.mouseMoved(),
-                c.delay(200)
+            const nextPress = yield waitUntil.one([
+                waitUntil.leftMousePressed(),
+                waitUntil.mouseMoved(),
+                waitUntil.delay(200)
             ], signal);
             lastCtx = nextPress.ctx;
             if (nextPress.data !== 0) break;

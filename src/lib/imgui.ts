@@ -1,5 +1,5 @@
 import Vector2 from "./Vector2";
-import Canvas, {CanvasFrameContext} from "./canvas-setup";
+import InteractiveCanvas, {CanvasFrameContext} from "./canvas-setup";
 import QuickLRU from "quick-lru";
 
 export type FillType = string | CanvasGradient;
@@ -56,7 +56,7 @@ interface ImguiContext {
     inPath: boolean;
 }
 
-const contexts: Map<CanvasFrameContext, ImguiContext> = new Map<CanvasFrameContext, ImguiContext>();
+const contexts: WeakMap<CanvasFrameContext, ImguiContext> = new WeakMap<CanvasFrameContext, ImguiContext>();
 
 function getImguiContext(cfContext: CanvasFrameContext): ImguiContext {
     if (contexts.has(cfContext)) return contexts.get(cfContext);
@@ -64,10 +64,6 @@ function getImguiContext(cfContext: CanvasFrameContext): ImguiContext {
     const context: ImguiContext = {
         inPath: false
     };
-
-    cfContext.disposeListeners.push(() => {
-        contexts.delete(cfContext);
-    });
 
     contexts.set(cfContext, context);
     return context;
@@ -226,8 +222,8 @@ export function moveTo(ctx: CanvasFrameContext, pos: Vector2) {
     ctx.renderer.moveTo(pos.x, pos.y);
 }
 
-export function copyFrom(ctx: CanvasFrameContext, other: Canvas) {
-    ctx.renderer.drawImage(other.ctx.canvas, 0, 0);
+export function copyFrom(source: CanvasFrameContext, target: CanvasFrameContext, offset = Vector2.zero) {
+    target.renderer.drawImage(source.renderer.canvas, offset.x, offset.y);
 }
 
 export function path(ctx: CanvasFrameContext, draw: PathDrawer) {

@@ -1,4 +1,9 @@
-import Canvas, {c, CanvasFrameContext, CoroutineManager, RectangleCollider} from "../../lib/canvas-setup";
+import InteractiveCanvas, {
+    CanvasFrameContext,
+    CoroutineManager,
+    RectangleCollider,
+    waitUntil
+} from "../../lib/canvas-setup";
 import {circle, draw, line, moveTo, path, rect, roundedRectangle, text} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
 import {colord, Colord, extend as addColordPlugin} from "colord";
@@ -62,8 +67,6 @@ class Target {
     }
 
     render(ctx: CanvasFrameContext) {
-        const collider = this.collider;
-
         const transitionTUnclamped = (performance.now() - this.stateTransitionStart) / this.stateTransitionTimeMs;
         const transitionT = Math.max(Math.min(transitionTUnclamped, 1), 0);
 
@@ -80,7 +83,8 @@ class Target {
         const expansion = oldExpansion + (newExpansion - oldExpansion) * exponentialT;
         const expansionVec = new Vector2(expansion, expansion);
 
-        roundedRectangle(ctx, collider.tl.subtract(expansionVec), collider.br.add(expansionVec), 8, {
+        const halfSize = Target.size.divide(2);
+        roundedRectangle(ctx, this.position.subtract(halfSize).subtract(expansionVec), this.position.add(halfSize).add(expansionVec), 8, {
             fill: fill.toHex(),
             thickness: 2,
             colour: "#1f2636"
@@ -92,22 +96,22 @@ class Target {
 
         cm.startCoroutine(function* handleMouseEntry() {
             while (true) {
-                yield c.mouseEntered(self.collider);
+                yield waitUntil.mouseEntered(self.collider);
                 self.setMouseState("hovered");
 
                 const popCursor = canvas.pushCursor("pointer");
 
-                const {data} = yield c.waitForFirst([
-                    c.leftMousePressed(),
-                    c.mouseExited(self.collider)
+                const {data} = yield waitUntil.one([
+                    waitUntil.leftMousePressed(),
+                    waitUntil.mouseExited(self.collider)
                 ]);
 
                 if (data === 0) {
                     self.setMouseState("active");
 
-                    const {data} = yield c.waitForFirst([
-                        c.leftMouseReleased(),
-                        c.mouseExited(self.cancelCollider)
+                    const {data} = yield waitUntil.one([
+                        waitUntil.leftMouseReleased(),
+                        waitUntil.mouseExited(self.cancelCollider)
                     ])
 
                     self.setMouseState("none");
@@ -116,11 +120,11 @@ class Target {
                     if (data === 0) {
                         Target.active = self;
                     } else {
-                        yield c.waitForFirst([
-                            c.leftMouseReleased(),
+                        yield waitUntil.one([
+                            waitUntil.leftMouseReleased(),
                             function* handleTargetDrag() {
                                 while (true) {
-                                    const {ctx} = yield c.mouseMoved();
+                                    const {ctx} = yield waitUntil.mouseMoved();
                                     self.position = ctx.mousePos;
                                 }
                             }
@@ -342,7 +346,7 @@ class MovementGraph {
             let popCursor: () => void | null = null;
 
             while (true) {
-                const {ctx} = yield c.nextFrame();
+                const {ctx} = yield waitUntil.nextFrame();
 
                 if (ctx.mousePos.x > 350 || ctx.mousePos.y < (ctx.screenSize.y - 350)) {
                     popCursor?.();
@@ -671,7 +675,7 @@ const graph = new MovementGraph();
 
 Target.active = targets.values().next().value;
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 
 canvas.start(ctx => {
     rect(ctx, Vector2.zero, ctx.screenSize, {
@@ -696,7 +700,7 @@ cm.startCoroutine(function* handlePhysics() {
     let lastNow = performance.now();
 
     while (true) {
-        const {ctx} = yield c.nextFrame();
+        const {ctx} = yield waitUntil.nextFrame();
 
         const now = performance.now();
 

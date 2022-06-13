@@ -1,4 +1,4 @@
-import Canvas from "./canvas-setup";
+import InteractiveCanvas from "./canvas-setup";
 import {line, rect, copyFrom} from "./imgui";
 import Vector2 from "./Vector2";
 
@@ -10,7 +10,7 @@ interface Point {
 const pointsCount = 200;
 const lineMaxDistance = .1;
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 
 const points: Point[] = Array.from({length: pointsCount}, _ => ({
     pos: new Vector2(Math.random(), Math.random()),

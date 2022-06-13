@@ -1,5 +1,5 @@
 import {makeNoise2D, makeNoise3D} from "open-simplex-noise";
-import Canvas from "./canvas-setup";
+import InteractiveCanvas from "./canvas-setup";
 import {arc, circle, draw, line, moveTo, path, polygon, rect} from "./imgui";
 import Vector2 from "./Vector2";
 
@@ -43,7 +43,7 @@ function greyscale(brightness: number) {
     return "#" + val + val + val;
 }
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 
 const points: Point[] = Array.from({length: pointsCount}, _ => {
     const dir = Math.random() * 2 * Math.PI;

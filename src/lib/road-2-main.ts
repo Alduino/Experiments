@@ -1,4 +1,4 @@
-import Canvas, {CanvasFrameContext, RenderTrigger} from "./canvas-setup";
+import InteractiveCanvas, {CanvasFrameContext, RenderTrigger} from "./canvas-setup";
 import {Bezier, Point} from "bezier-js";
 import {v4 as uuid} from "uuid";
 import iter from "itiriri";
@@ -575,7 +575,7 @@ function handleCurveEnd(ctx: CanvasFrameContext, oldState: CurveMakerState): Cur
 
 
 
-const canvas = new Canvas("canvas");
+const canvas = new InteractiveCanvas("canvas");
 canvas.preventKeyDefault("Shift", true);
 canvas.preventKeyDefault("Control", true);
 canvas.preventKeyDefault("Alt", true);
