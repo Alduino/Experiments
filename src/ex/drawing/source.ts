@@ -1,4 +1,13 @@
-import InteractiveCanvas, {OffscreenCanvas, RectangleCollider, ref, waitUntil} from "../../lib/canvas-setup";
+import InteractiveCanvas, {
+    CoroutineAwait,
+    CoroutineGeneratorFunction,
+    deref,
+    Dereffable,
+    OffscreenCanvas,
+    RectangleCollider,
+    ref, Setter,
+    waitUntil
+} from "../../lib/canvas-setup";
 import {circle, copyFrom, line, rect} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
 
@@ -51,10 +60,65 @@ canvas.start(ctx => {
 
 const cm = canvas.getCoroutineManager();
 
+const enum KeyPressedRepeatingState {
+    waiting,
+    delay,
+    interval
+}
+
+function createKeyPressedRepeating(key: string, abortedRef: Setter<boolean>, repeatDelay = 500, repeatInterval = 50): CoroutineGeneratorFunction {
+    let state: KeyPressedRepeatingState = KeyPressedRepeatingState.waiting;
+
+    function nextOrCancel(waiter: CoroutineAwait<void>, nextState: KeyPressedRepeatingState): CoroutineGeneratorFunction {
+        return function* handleNextOrCancel() {
+            const {data, ctx} = yield waitUntil.one([
+                waitUntil.keyReleased(key),
+                waiter
+            ]);
+
+            if (data === 0 || !ctx.keyDown.get(key)) {
+                abortedRef.set(true);
+                state = KeyPressedRepeatingState.waiting;
+            } else {
+                abortedRef.set(false);
+                state = nextState;
+            }
+        };
+    }
+
+    return function* handleKeyPressedRepeating() {
+        switch (state) {
+            case KeyPressedRepeatingState.waiting:
+                yield waitUntil.keyPressed(key);
+                state = KeyPressedRepeatingState.delay;
+                abortedRef.set(false);
+                break;
+            case KeyPressedRepeatingState.delay:
+                yield nextOrCancel(waitUntil.delay(repeatDelay), KeyPressedRepeatingState.interval);
+                break;
+            case KeyPressedRepeatingState.interval:
+                yield nextOrCancel(waitUntil.delay(repeatInterval), KeyPressedRepeatingState.interval);
+                break;
+        }
+    }
+}
+
 cm.startCoroutine(function* brushResize() {
+    const aborted = ref(false);
+
+    const smallerRepeating = createKeyPressedRepeating("[", aborted);
+    const biggerRepeating = createKeyPressedRepeating("]", aborted);
+
     while (true) {
-        const {ctx} = yield waitUntil.mouseScrolled();
-        brushRadius = Math.ceil(brushRadius * (1 - ctx.mouseScroll / 2500));
+        const {data} = yield waitUntil.one([
+            smallerRepeating,
+            biggerRepeating
+        ]);
+
+        if (deref(aborted)) continue;
+
+        const multiplier = data === 0 ? 0.8 : 1.25;
+        brushRadius = Math.ceil(brushRadius * multiplier);
     }
 });
 
