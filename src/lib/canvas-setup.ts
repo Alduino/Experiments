@@ -1243,8 +1243,11 @@ type InteractiveCanvasEvents = {
 }
 
 export default class InteractiveCanvas implements Canvas {
+    /**
+     * The frame rate to target. Zero means the maximum possible.
+     */
+    targetFrameRate = 0;
     private readonly _canv: HTMLCanvasElement;
-
     private readonly eventEmitter = new MiniEventEmitter<InteractiveCanvasEvents>();
     public readonly addListener = getListenerAdder(this.eventEmitter);
     private _running: boolean = false;
@@ -1480,8 +1483,21 @@ export default class InteractiveCanvas implements Canvas {
 
     private async beginRunningFrames(frame: CanvasFrameRenderer) {
         while (this._running) {
+            let thisFrameStartTime = performance.now();
+
             this.handleFrame(frame);
             await new Promise(yay => requestAnimationFrame(yay));
+
+            if (this.targetFrameRate !== 0) {
+                let nextFrameStartTime = performance.now();
+                const expectedFrameDuration = 1000 / this.targetFrameRate;
+                const actualFrameDuration = nextFrameStartTime - thisFrameStartTime;
+                const frameDurationDiff = expectedFrameDuration - actualFrameDuration;
+
+                if (frameDurationDiff > 0) {
+                    await new Promise(yay => setTimeout(yay, frameDurationDiff));
+                }
+            }
         }
     }
 
