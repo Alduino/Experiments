@@ -59,7 +59,7 @@ canvas.start(ctx => {
         fill: "#999"
     });
 
-    const brushRadiusLog = Math.min(Math.log10(brushRadius - 3) / 3, 1);
+    const brushRadiusLog = Math.min(Math.log10(brushRadius - 3) / 2, 1);
 
     circle(ctx, drawingOffset.subtract(new Vector2(0, 18)).add(drawing.size.justX.multiply(brushRadiusLog)), 4, {
         fill: "#ccc"
@@ -180,7 +180,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
                     function* handleBrushResize() {
                         while (true) {
                             const brushRadiusLog = Math.max(0, Math.min(1, (x.ctx.mousePos.x - getDrawingOffset().x) / drawing.size.x));
-                            brushRadius = Math.round(Math.pow(1000, brushRadiusLog) + 3);
+                            brushRadius = Math.round(Math.pow(100, brushRadiusLog) + 3);
 
                             x = yield waitUntil.mouseMoved();
                         }
