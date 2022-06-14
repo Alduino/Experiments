@@ -1446,8 +1446,8 @@ export default class InteractiveCanvas implements Canvas {
             this._contextFactory.preFrame();
 
             const ctx = this._contextFactory.createContext();
-            frame(ctx);
             this._coroutineManager.frame(ctx);
+            frame(ctx);
             ctx.disposeListeners.forEach(listener => listener());
 
             if (this.cursorUpdateSchedule === 1) {
