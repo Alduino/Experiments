@@ -409,6 +409,11 @@ interface NestCoroutineAwait<T> extends CoroutineAwaitBase<T> {
     delay?: never;
 
     /**
+     * Disposes of all the children `StartCoroutineAwait`ers
+     */
+    dispose(): void;
+
+    /**
      * Called when the awaiter is first called, with that coroutine's traces as the parameter
      */
     init?(traces: string[], cm: CoroutineManager): void;
@@ -496,7 +501,7 @@ export interface CoroutineContext {
 }
 
 type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
-type GeneratorType = Generator<AwaiterCastable | MarkedCoroutineAwait<symbol>, void, CoroutineContext>;
+export type CoroutineGenerator = Generator<AwaiterCastable | MarkedCoroutineAwait<symbol>, void, CoroutineContext>;
 
 function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable): CoroutineAwait<unknown> {
     if (typeof awaiterCastable === "function") {
@@ -599,6 +604,11 @@ export const waitUntil = {
             init(initTraces: string[], coroutineManager: CoroutineManager) {
                 traces = initTraces;
                 cm = coroutineManager;
+            },
+            dispose() {
+                for (const coroutineAwaiter of coroutineAwaiters) {
+                    coroutineAwaiter.dispose();
+                }
             },
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal): CoroutineAwaitResult<T> {
                 const results = new Array<CoroutineAwaitResult<unknown>>(awaiters.length);
@@ -969,7 +979,7 @@ export interface CoroutineManager {
 
 interface StatefulCoroutine {
     disposeHandlers: Set<() => void>;
-    coroutine: GeneratorType;
+    coroutine: CoroutineGenerator;
     identifier: string;
     traces: string[];
     abortSignal: AbortSignal;
@@ -981,7 +991,7 @@ interface StatefulCoroutine {
     onComplete(): void;
 }
 
-type CoroutineGeneratorFunction = (signal: AbortSignal) => GeneratorType;
+export type CoroutineGeneratorFunction = (signal: AbortSignal) => CoroutineGenerator;
 
 function getCoroutineName(baseName: string) {
     if (/handle[A-Z]/.test(baseName)) {
@@ -997,6 +1007,7 @@ class CoroutineManagerImpl implements CoroutineManager {
     private incr = 0;
     private checkCount = 0;
     private lastCheckCount = 0;
+    private disposalCount = 0;
 
     get size() {
         return this._coroutines.size;
@@ -1006,6 +1017,21 @@ class CoroutineManagerImpl implements CoroutineManager {
         return Array.from(this._coroutines).map(item => item.identifier);
     }
 
+    /**
+     * The number of disposal handlers that need to be called eventually.
+     */
+    get waitingDisposalCount() {
+        return Array.from(this._coroutines)
+            .reduce((prev, curr) => prev + curr.disposeHandlers.size, 0);
+    }
+
+    /**
+     * The number of disposal handlers that were called in this frame.
+     */
+    get thisFrameDisposalCount() {
+        return this.disposalCount;
+    }
+
     getLastCheckCount() {
         return this.lastCheckCount;
     }
@@ -1013,6 +1039,7 @@ class CoroutineManagerImpl implements CoroutineManager {
     frame(ctx: InteractiveCanvasFrameContext) {
         this.lastCheckCount = this.checkCount;
         this.checkCount = 0;
+        this.disposalCount = 0;
 
         for (const state of this._coroutines) {
             if (state.rootCheckDisabled) continue;
@@ -1094,6 +1121,7 @@ class CoroutineManagerImpl implements CoroutineManager {
 
     private disposeCoroutine(state: StatefulCoroutine) {
         state.disposeHandlers.forEach(handler => handler());
+        this.disposalCount += state.disposeHandlers.size;
 
         if (process.env.NODE_ENV !== "production") {
             console.debug("Coroutine", `"${state.identifier}"`, "has finished running");
@@ -1160,10 +1188,12 @@ class CoroutineManagerImpl implements CoroutineManager {
                 if (done) {
                     this.disposeCoroutine(state);
                 } else {
-                    const res = value as CoroutineAwait<unknown>;
-
-                    if (isNestCoroutineAwait(res)) res.init?.(state.traces, this);
-                    else res.init?.(state.abortSignal);
+                    if (isNestCoroutineAwait(value)) {
+                        value.init?.(state.traces, this);
+                        state.disposeHandlers.add(value.dispose);
+                    } else {
+                        value.init?.(state.abortSignal);
+                    }
 
                     state.lastResult = value as CoroutineAwait<unknown>;
                 }
@@ -1171,6 +1201,11 @@ class CoroutineManagerImpl implements CoroutineManager {
                 state.lastResult.uninit?.();
                 state.traces.splice(0, state.traceShiftCount);
                 state.traceShiftCount = 0;
+
+                if (isNestCoroutineAwait(state.lastResult)) {
+                    this.disposalCount++;
+                    state.disposeHandlers.delete(state.lastResult.dispose);
+                }
             }
         } catch (err) {
             if (!state.rootCheckDisabled) {
@@ -1399,6 +1434,8 @@ export default class InteractiveCanvas implements Canvas {
             D: ctx.disposeListeners.length.toFixed(0),
             _C: this._coroutineManager.size.toFixed(0),
             _SC: this._coroutineManager.getLastCheckCount().toFixed(0),
+            DW: this._coroutineManager.waitingDisposalCount.toFixed(0),
+            _DF: this._coroutineManager.thisFrameDisposalCount.toFixed(0),
             CN: this._coroutineManager.identifiers.join(", ")
         });
     }
