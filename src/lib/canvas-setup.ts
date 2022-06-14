@@ -1347,6 +1347,19 @@ export default class InteractiveCanvas implements Canvas {
         return offsetY + maxHeight + 10;
     }
 
+    /**
+     * Stars each frame rendering.
+     * @param frame A function that can render to the canvas, called once per frame.
+     * @param renderTrigger When set, the render function is only called when the specified events happen.
+     *
+     * ## Frame Actions Order
+     * 1. Context setup / creation
+     * 2. Coroutines
+     * 3. `frame` handler
+     * 4. Context disposal handlers
+     * 5. Scheduled cursor updates
+     * 6. Context cleanup
+     */
     public start(frame: CanvasFrameRenderer, renderTrigger: RenderTrigger = RenderTrigger.Always) {
         this._trigger = renderTrigger;
 
