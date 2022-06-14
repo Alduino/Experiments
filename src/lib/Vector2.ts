@@ -44,6 +44,14 @@ export default class Vector2 {
         this._source.y = value;
     }
 
+    get justX() {
+        return new Vector2(this.x, 0);
+    }
+
+    get justY() {
+        return new Vector2(0, this.y);
+    }
+
     /**
      * Returns true if the points are at the same location
      */

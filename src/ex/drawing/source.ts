@@ -2,14 +2,15 @@ import InteractiveCanvas, {
     CoroutineAwait,
     CoroutineGeneratorFunction,
     deref,
-    Dereffable,
     OffscreenCanvas,
     RectangleCollider,
-    ref, Setter,
+    ref,
+    Setter,
     waitUntil
 } from "../../lib/canvas-setup";
-import {circle, copyFrom, line, rect} from "../../lib/imgui";
+import {circle, copyFrom, line, rect, roundedRectangle, text} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
+import "@fontsource/montserrat/800.css";
 
 const canvas = new InteractiveCanvas("canvas");
 
@@ -30,26 +31,55 @@ function getDrawingCollider() {
     return new RectangleCollider(offset, offset.add(drawing.size));
 }
 
+function getBrushSizeSliderCollider() {
+    const offset = getDrawingOffset();
+
+    return new RectangleCollider(
+        offset.subtract(new Vector2(0, 22)),
+        offset.add(drawing.size.justX).subtract(new Vector2(0, 14))
+    );
+}
+
 const drawingCollider = ref(getDrawingCollider());
+const brushSizeSliderCollider = ref(getBrushSizeSliderCollider());
 
 canvas.addListener("resize", () => {
     drawingCollider.set(getDrawingCollider());
+    brushSizeSliderCollider.set(getBrushSizeSliderCollider());
 });
 
 canvas.start(ctx => {
+    const drawingOffset = getDrawingOffset();
+
     rect(ctx, Vector2.zero, canvas.size, {
         fill: "#666"
     });
 
-    copyFrom(drawingCtx, ctx, getDrawingOffset());
+    roundedRectangle(ctx, drawingOffset.subtract(new Vector2(0, 20)), drawingOffset.add(drawing.size.justX).subtract(new Vector2(0, 16)), 2, {
+        fill: "#999"
+    });
+
+    const brushRadiusLog = Math.min(Math.log10(brushRadius - 3) / 3, 1);
+
+    circle(ctx, drawingOffset.subtract(new Vector2(0, 18)).add(drawing.size.justX.multiply(brushRadiusLog)), 4, {
+        fill: "#ccc"
+    });
+
+    text(ctx, drawingOffset.subtract(new Vector2(0, 34)).add(drawing.size.justX.divide(2)), "Brush Size", {
+        font: "12px Montserrat",
+        fill: "white",
+        align: "center"
+    });
+
+    copyFrom(drawingCtx, ctx, drawingOffset);
 
     if (cursorPosition) {
-        circle(ctx, cursorPosition.add(getDrawingOffset()), brushRadius, {
+        circle(ctx, cursorPosition.add(drawingOffset), brushRadius, {
             thickness: 3,
             colour: "#fff9"
         });
 
-        circle(ctx, cursorPosition.add(getDrawingOffset()), brushRadius, {
+        circle(ctx, cursorPosition.add(drawingOffset), brushRadius, {
             thickness: 1,
             colour: "#0006"
         });
@@ -119,6 +149,44 @@ cm.startCoroutine(function* brushResize() {
 
         const multiplier = data === 0 ? 0.8 : 1.25;
         brushRadius = Math.ceil(brushRadius * multiplier);
+    }
+});
+
+cm.startCoroutine(function* handleBrushSizeCollision() {
+    while (true) {
+        yield waitUntil.mouseEntered(brushSizeSliderCollider);
+        const popCursor = canvas.pushCursor("ew-resize");
+
+        let isResizing = false;
+
+        yield waitUntil.one([
+            function* mouseExit() {
+                while (true) {
+                    yield waitUntil.mouseExited(brushSizeSliderCollider);
+                    if (!isResizing) return;
+                }
+            },
+            function* mousePress() {
+                let x = yield waitUntil.leftMousePressed();
+
+                isResizing = true;
+                yield waitUntil.one([
+                    function* handleBrushResize() {
+                        while (true) {
+                            const brushRadiusLog = Math.max(0, Math.min(1, (x.ctx.mousePos.x - getDrawingOffset().x) / drawing.size.x));
+                            brushRadius = Math.round(Math.pow(1000, brushRadiusLog) + 3);
+
+                            x = yield waitUntil.mouseMoved();
+                        }
+                    },
+                    waitUntil.leftMouseReleased()
+                ]);
+
+                isPainting = false;
+            }
+        ]);
+
+        popCursor();
     }
 });
 
