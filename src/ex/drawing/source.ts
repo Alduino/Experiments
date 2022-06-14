@@ -85,7 +85,11 @@ canvas.start(ctx => {
         });
     }
 
-    canvas.drawDebug(ctx);
+    canvas.drawCustomDebug(ctx, "tl", {
+        Controls: "[ and ] change brush size"
+    });
+
+    //canvas.drawDebug(ctx);
 });
 
 const cm = canvas.getCoroutineManager();
