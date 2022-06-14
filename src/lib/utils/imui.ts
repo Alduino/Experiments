@@ -1,9 +1,9 @@
 import Vector2 from "../Vector2";
-import {CanvasFrameContext} from "../canvas-setup";
+import {InteractiveCanvasFrameContext} from "../canvas-setup";
 import {measureText, roundedRectangle as drawRoundedRect, text as drawText} from "../imgui";
 
 interface Context {
-    ctx: CanvasFrameContext;
+    ctx: InteractiveCanvasFrameContext;
     pos: Vector2;
     direction: "horizontal" | "vertical";
     maxSize: number;
@@ -69,7 +69,7 @@ function nest(direction: Context["direction"], children: () => void, padding = n
     return {pos: oldPos, size: sizeVec};
 }
 
-export function drawPopupRoot(ctx: CanvasFrameContext, position: Vector2, children: () => void) {
+export function drawPopupRoot(ctx: InteractiveCanvasFrameContext, position: Vector2, children: () => void) {
     if (workingContext) throw new Error("A root cannot go inside another root");
 
     workingContext = {
