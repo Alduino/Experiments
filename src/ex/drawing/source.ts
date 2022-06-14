@@ -162,6 +162,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
         const popCursor = canvas.pushCursor("ew-resize");
 
         let isResizing = false;
+        cursorPosition = drawing.size.divide(2);
 
         yield waitUntil.one([
             function* mouseExit() {
@@ -174,6 +175,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
                 let x = yield waitUntil.leftMousePressed();
 
                 isResizing = true;
+
                 yield waitUntil.one([
                     function* handleBrushResize() {
                         while (true) {
@@ -190,6 +192,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
             }
         ]);
 
+        cursorPosition = null;
         popCursor();
     }
 });
