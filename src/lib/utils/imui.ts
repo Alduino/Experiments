@@ -1,6 +1,6 @@
 import Vector2 from "../Vector2";
 import {InteractiveCanvasFrameContext} from "../canvas-setup";
-import {measureText, roundedRectangle as drawRoundedRect, text as drawText} from "../imgui";
+import {measureText, rect, roundedRectangle as drawRoundedRect, text as drawText} from "../imgui";
 
 interface Context {
     ctx: InteractiveCanvasFrameContext;
@@ -110,7 +110,19 @@ export function flowVertically(children: () => void) {
     nest("vertical", children);
 }
 
-export function drawButton(children: () => void) {
+interface InteractiveOptions_Auto {
+    controlled?: false;
+}
+
+interface InteractiveOptions_Controlled {
+    controlled: true;
+    isHovered: boolean;
+    isActive: boolean;
+}
+
+export type InteractiveOptions = InteractiveOptions_Auto | InteractiveOptions_Controlled;
+
+export function drawButton(children: () => void, options: InteractiveOptions = {}) {
     const context = getContext();
 
     const {pos, size} = nest("horizontal", children, new Vector2(5, 5), (pos, size) => {
@@ -118,8 +130,8 @@ export function drawButton(children: () => void) {
         const mp = context.ctx.mousePos;
         const br = pos.add(size);
 
-        const isHovered = mp.x > pos.x && mp.x < br.x && mp.y > pos.y && mp.y < br.y;
-        const isActive = isHovered && context.ctx.mouseDown.left;
+        const isHovered = options.controlled ? options.isHovered : mp.x > pos.x && mp.x < br.x && mp.y > pos.y && mp.y < br.y;
+        const isActive = options.controlled ? options.isActive : isHovered && context.ctx.mouseDown.left;
 
         drawRoundedRect(context.ctx, pos, pos.add(size), 5, {
             fill: isActive ? "#555" : isHovered ? "#333" : "#000",
@@ -157,6 +169,19 @@ export function drawLabel(text: string) {
             font,
             align: "left",
             fill: "white"
+        });
+    });
+}
+
+export function drawRect(size: Vector2, fill: string) {
+    const context = getContext();
+    updateMaxSize(workingContext, size);
+    const pos = workingContext.pos;
+    shift(workingContext, size);
+
+    context.batch.push(() => {
+        rect(context.ctx, pos, pos.add(size), {
+            fill
         });
     });
 }

@@ -1,5 +1,5 @@
 import Vector2 from "./Vector2";
-import InteractiveCanvas, {CanvasFrameContext} from "./canvas-setup";
+import {CanvasFrameContext} from "./canvas-setup";
 import QuickLRU from "quick-lru";
 
 export type FillType = string | CanvasGradient;
@@ -222,8 +222,17 @@ export function moveTo(ctx: CanvasFrameContext, pos: Vector2) {
     ctx.renderer.moveTo(pos.x, pos.y);
 }
 
-export function copyFrom(source: CanvasFrameContext, target: CanvasFrameContext, offset = Vector2.zero) {
-    target.renderer.drawImage(source.renderer.canvas, offset.x, offset.y);
+function isCanvasFrameContext(value: unknown): value is CanvasFrameContext {
+    if (!value || typeof value !== "object") return false;
+    const casted = value as CanvasFrameContext;
+    if (!casted.renderer || typeof casted.renderer !== "object") return false;
+    return true;
+}
+
+export function copyFrom(source: CanvasFrameContext | CanvasImageSource, target: CanvasFrameContext, offset = Vector2.zero) {
+    const imageData = isCanvasFrameContext(source) ? source.renderer.canvas : source;
+
+    target.renderer.drawImage(imageData, offset.x, offset.y);
 }
 
 export function path(ctx: CanvasFrameContext, draw: PathDrawer) {
@@ -253,8 +262,8 @@ export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value:
     const textMeasurement = measureText(ctx, value, opts.text);
     const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
     const rectSize = textSize.add(opts.padding.add(opts.padding));
-
-    roundedRectangle(ctx, pos, pos.add(rectSize), 3, opts.background);
+    const rectOffset = opts.text.align === "center" ? textSize.justX.divide(2) : Vector2.zero;
+    roundedRectangle(ctx, pos.subtract(rectOffset), pos.add(rectSize).subtract(rectOffset), 3, opts.background);
     text(ctx, pos.add(opts.padding), value, opts.text);
 }
 

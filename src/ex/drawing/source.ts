@@ -1,16 +1,20 @@
 import InteractiveCanvas, {
     CoroutineAwait,
     CoroutineGeneratorFunction,
-    deref,
     OffscreenCanvas,
     RectangleCollider,
-    ref,
-    Setter,
     waitUntil
 } from "../../lib/canvas-setup";
 import {circle, copyFrom, line, rect, roundedRectangle, text} from "../../lib/imgui";
 import Vector2 from "../../lib/Vector2";
+import {ref, Setter} from "../../lib/utils/ref";
 import "@fontsource/montserrat/800.css";
+import FlexComponent from "../../lib/utils/scui/components/FlexComponent";
+import TextComponent from "../../lib/utils/scui/components/TextComponent";
+import RootComponent from "../../lib/utils/scui/lib/RootComponent";
+import ButtonComponent from "../../lib/utils/scui/components/ButtonComponent";
+import RectangleComponent from "../../lib/utils/scui/components/RectangleComponent";
+import {drawScuiDebug} from "../../lib/utils/scui/lib/debugger";
 
 const canvas = new InteractiveCanvas("canvas");
 
@@ -48,8 +52,72 @@ canvas.addListener("resize", () => {
     brushSizeSliderCollider.set(getBrushSizeSliderCollider());
 });
 
+const cm = canvas.getCoroutineManager();
+
+function createButton(initialLabel: string) {
+    const text = new TextComponent();
+    text.text = initialLabel;
+    text.fill = "white";
+
+    const button = new ButtonComponent(canvas);
+    button.addChild(text);
+
+    return button;
+}
+
+const colours = {
+    black: "#000000",
+    red: "#da3c0d",
+    green: "#5ad513",
+    blue: "#591ad7",
+    white: "#ffffff"
+};
+
+let selectedColour = colours.black;
+
+const colourButtonsContainer = new FlexComponent();
+
+for (const [, value] of Object.entries(colours)) {
+    const text = new TextComponent();
+    text.text = "Select:";
+    text.fill = "white";
+
+    const icon = new RectangleComponent();
+    icon.fill = value;
+
+    const flex = new FlexComponent();
+    flex.direction = "row";
+    flex.crossAlignItems = "centre";
+    flex.addChildren(text, icon);
+
+    flex.updateChildMetadata(icon, {
+        crossAlign: "stretch",
+        grow: 1
+    });
+
+    const button = new ButtonComponent(canvas);
+    button.addChild(flex);
+
+    button.innerSize = new Vector2(150, 40);
+
+    button.clickedEvent.listen(() => {
+        selectedColour = value;
+    });
+
+    colourButtonsContainer.addChild(button);
+}
+
+const colourButtonsRoot = new RootComponent();
+colourButtonsRoot.setChild(colourButtonsContainer);
+
+let popInspectCursor: () => void | null = null;
+
 canvas.start(ctx => {
     const drawingOffset = getDrawingOffset();
+
+    const buttonsPosition = drawingOffset.add(drawing.size.justX).add(new Vector2(10, 0));
+    colourButtonsRoot.setDrawnPosition(buttonsPosition);
+    colourButtonsRoot.handleBatchedUpdates();
 
     rect(ctx, Vector2.zero, canvas.size, {
         fill: "#666"
@@ -73,7 +141,30 @@ canvas.start(ctx => {
 
     copyFrom(drawingCtx, ctx, drawingOffset);
 
+    colourButtonsRoot.render();
+    const imageSource = colourButtonsRoot.getImageSource();
+    copyFrom(imageSource, ctx, buttonsPosition);
+
+    if (ctx.keyDown.get("d")) {
+        if (!popInspectCursor) {
+            popInspectCursor = canvas.pushCursor("crosshair");
+        }
+
+        drawScuiDebug(ctx, colourButtonsRoot);
+        canvas.pauseCoroutines = true;
+    } else {
+        popInspectCursor?.();
+        popInspectCursor = null;
+
+        canvas.pauseCoroutines = false;
+    }
+
     if (cursorPosition) {
+        circle(ctx, cursorPosition.add(drawingOffset), brushRadius, {
+            // TODO better way to set opacity
+            fill: selectedColour + "44"
+        });
+
         circle(ctx, cursorPosition.add(drawingOffset), brushRadius, {
             thickness: 3,
             colour: "#fff9"
@@ -86,13 +177,13 @@ canvas.start(ctx => {
     }
 
     canvas.drawCustomDebug(ctx, "tl", {
-        Controls: "[ and ] change brush size"
+        Controls: "",
+        "[ and ]": "change the brush size",
+        D: "shows the component inspector (use over the colour buttons)"
     });
 
     //canvas.drawDebug(ctx);
 });
-
-const cm = canvas.getCoroutineManager();
 
 const enum KeyPressedRepeatingState {
     waiting,
@@ -149,7 +240,7 @@ cm.startCoroutine(function* brushResize() {
             biggerRepeating
         ]);
 
-        if (deref(aborted)) continue;
+        if (aborted.get()) continue;
 
         const multiplier = data === 0 ? 0.8 : 1.25;
         brushRadius = Math.ceil(brushRadius * multiplier);
@@ -228,15 +319,15 @@ cm.startCoroutine(function* collisionDetection() {
                                 start: lastPosition,
                                 end: cursorPosition,
                                 thickness: brushRadius * 2,
-                                colour: "black"
+                                colour: selectedColour
                             });
 
                             circle(drawingCtx, lastPosition, brushRadius, {
-                                fill: "black"
+                                fill: selectedColour
                             });
 
                             circle(drawingCtx, cursorPosition, brushRadius, {
-                                fill: "black"
+                                fill: selectedColour
                             });
                         });
 
@@ -250,21 +341,21 @@ cm.startCoroutine(function* collisionDetection() {
                                     start: lastPosition,
                                     end: cursorPosition,
                                     thickness: brushRadius * 2,
-                                    colour: "black"
+                                    colour: selectedColour
                                 });
 
                                 circle(drawingCtx, lastPosition, brushRadius, {
-                                    fill: "black"
+                                    fill: selectedColour
                                 });
 
                                 circle(drawingCtx, cursorPosition, brushRadius, {
-                                    fill: "black"
+                                    fill: selectedColour
                                 });
 
                                 lastPosition = cursorPosition;
                             } else {
                                 circle(drawingCtx, cursorPosition, brushRadius, {
-                                    fill: "black"
+                                    fill: selectedColour
                                 });
 
                                 lastPosition = cursorPosition;

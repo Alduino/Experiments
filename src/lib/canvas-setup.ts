@@ -1,5 +1,7 @@
 import Vector2 from "./Vector2";
 import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
+import {getListenerAdder, MiniEventEmitter} from "./utils/MiniEventEmitter";
+import {deref, Dereffable} from "./utils/ref";
 
 type CanvasFrameRenderer = (ctx: InteractiveCanvasFrameContext) => void;
 
@@ -274,6 +276,14 @@ class InteractiveCanvasFrameContextFactory {
         };
     }
 
+    createGlobalContext(): CanvasFrameContext {
+        return {
+            renderer: this.ctx,
+            screenSize: new Vector2(this._canv.width, this._canv.height),
+            disposeListeners: []
+        };
+    }
+
     private handleMouseDown(ev: MouseEvent) {
         switch (ev.button) {
             case 0:
@@ -455,20 +465,20 @@ interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     getTraces(): readonly string[];
 }
 
-export interface MarkedCoroutineAwait<Symbol extends symbol> {
+export interface ExoticCoroutineAwait<Symbol extends symbol> {
     marker: Symbol;
 }
 
-interface MarkedCoroutineAwait_Dispose extends MarkedCoroutineAwait<typeof disposeFunctionMarker> {
+interface ExoticCoroutineAwait_Dispose extends ExoticCoroutineAwait<typeof disposeFunctionMarker> {
     callback(): void;
 }
 
-type MarkedCoroutineAwaitTypes = MarkedCoroutineAwait_Dispose;
+type ExoticCoroutineAwaitTypes = ExoticCoroutineAwait_Dispose;
 
-function isMarkedCoroutineAwait(awaiter: unknown): awaiter is MarkedCoroutineAwait<symbol> {
+function isExoticCoroutineAwait(awaiter: unknown): awaiter is ExoticCoroutineAwait<symbol> {
     if (!awaiter) return false;
     if (typeof awaiter !== "object") return false;
-    const casted = awaiter as MarkedCoroutineAwait<symbol>;
+    const casted = awaiter as ExoticCoroutineAwait<symbol>;
     return typeof casted.marker === "symbol";
 }
 
@@ -501,7 +511,7 @@ export interface CoroutineContext {
 }
 
 type AwaiterCastable = CoroutineAwait<unknown> | CoroutineGeneratorFunction | StartCoroutineResult;
-export type CoroutineGenerator = Generator<AwaiterCastable | MarkedCoroutineAwait<symbol>, void, CoroutineContext>;
+export type CoroutineGenerator = Generator<AwaiterCastable | ExoticCoroutineAwait<symbol>, void, CoroutineContext>;
 
 function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable): CoroutineAwait<unknown> {
     if (typeof awaiterCastable === "function") {
@@ -515,54 +525,6 @@ function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable)
 
 export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
 export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
-
-export interface Setter<in T> {
-    set(value: T): void;
-}
-
-export interface Getter<out T> {
-    get(): T;
-}
-
-export type Dereffable<T> = T | Getter<T>;
-export type Reference<T> = Setter<T> & Getter<T>;
-
-class ReferenceImpl<T> implements Setter<T>, Getter<T> {
-    constructor(private value: T) {
-    }
-
-    set(value: T) {
-        this.value = value;
-    }
-
-    get(): T {
-        return this.value;
-    }
-}
-
-function isGetter<T>(value: T | Getter<T>): value is Getter<T> {
-    if (!value) return false;
-    if (typeof value !== "object") return false;
-    const casted = value as Getter<T>;
-    return typeof casted.get === "function";
-}
-
-/**
- * Creates a reference from the initial value.
- * If the initial value is a reference already, its value is cloned into a new reference.
- */
-export function ref<T>(initialValue: Dereffable<T>): Reference<T> {
-    const value = deref(initialValue);
-    return new ReferenceImpl(value);
-}
-
-/**
- * Returns the value in the reference, or the value if it is passed directly.
- */
-export function deref<T>(reference: Dereffable<T>): T {
-    if (isGetter(reference)) return reference.get();
-    return reference;
-}
 
 /**
  * Various coroutine awaiters
@@ -827,8 +789,9 @@ export const waitUntil = {
      * Waits until the mouse exits the shape.
      * @param shape A list of points that creates an outline.
      * @param mustStartInside When true, the mouse has to have been inside before the awaiter can return.
+     * @param minDistance The distance away from the collider before the awaiter can return.
      */
-    mouseExited(shape: Dereffable<Collider>, mustStartInside = false): CoroutineAwait<void> {
+    mouseExited(shape: Dereffable<Collider>, mustStartInside = false, minDistance = 0): CoroutineAwait<void> {
         let hasBeenInside = !mustStartInside;
 
         return {
@@ -839,8 +802,8 @@ export const waitUntil = {
                 const distance = deref(shape).getSignedDistance(ctx.mousePos);
 
                 if (hasBeenInside) {
-                    if (distance > 0) return {state: true};
-                } else if (distance <= 0) {
+                    if (distance > minDistance) return {state: true};
+                } else if (distance <= minDistance) {
                     hasBeenInside = true;
                 }
 
@@ -869,9 +832,15 @@ export const waitUntil = {
     delay(ms: number, signal?: AbortSignal): CoroutineAwait<void> {
         let state = false;
 
-        const timeout = setTimeout(() => state = true, ms);
+        let timeout: NodeJS.Timeout;
 
         const delay = new Promise<void>(yay => {
+            timeout = setTimeout(() => {
+                signal?.removeEventListener("abort", handleAbort);
+                state = true;
+                yay();
+            }, ms);
+
             function handleAbort() {
                 signal.removeEventListener("abort", handleAbort);
                 clearTimeout(timeout);
@@ -971,10 +940,10 @@ export interface CoroutineManager {
 
     /**
      * The callback supplied to this function will be called when the coroutine is about to be disposed.
-     * This will be in one of the `yield` statements.
+     * This will happen during one of the `yield` statements.
      * That `yield` statement will never complete.
      */
-    hookDispose(callback: () => void): MarkedCoroutineAwait<typeof disposeFunctionMarker>;
+    hookDispose(callback: () => void): ExoticCoroutineAwait<typeof disposeFunctionMarker>;
 }
 
 interface StatefulCoroutine {
@@ -987,6 +956,7 @@ interface StatefulCoroutine {
     waitingForDelay: boolean;
     lastResult?: CoroutineAwait<unknown>;
     traceShiftCount: number;
+    lastWaitingPromise?: Promise<void>;
 
     onComplete(): void;
 }
@@ -1112,7 +1082,7 @@ class CoroutineManagerImpl implements CoroutineManager {
         };
     }
 
-    public hookDispose(callback: () => void): MarkedCoroutineAwait_Dispose {
+    public hookDispose(callback: () => void): ExoticCoroutineAwait_Dispose {
         return {
             marker: disposeFunctionMarker,
             callback
@@ -1135,9 +1105,14 @@ class CoroutineManagerImpl implements CoroutineManager {
     private handleCoroutine(ctx: InteractiveCanvasFrameContext, state: StatefulCoroutine) {
         if (state.waitingForDelay) return;
 
-        if (state.lastResult?.delay) {
+        if (state.lastResult?.delay && state.lastResult.delay !== state.lastWaitingPromise) {
             state.waitingForDelay = true;
-            state.lastResult.delay.then(() => state.waitingForDelay = false);
+            const promise = state.lastResult.delay;
+            state.lastResult.delay.then(() => {
+                if (state.lastResult.delay !== promise) return;
+                state.lastWaitingPromise = promise;
+                return state.waitingForDelay = false;
+            });
             return;
         }
 
@@ -1163,8 +1138,8 @@ class CoroutineManagerImpl implements CoroutineManager {
                     let res = state.coroutine.next({ctx, aborted, data});
                     done = res.done;
 
-                    while (res.value && isMarkedCoroutineAwait(res.value)) {
-                        const value = res.value as MarkedCoroutineAwaitTypes;
+                    while (res.value && isExoticCoroutineAwait(res.value)) {
+                        const value = res.value as ExoticCoroutineAwaitTypes;
 
                         switch (value.marker) {
                             case disposeFunctionMarker:
@@ -1222,48 +1197,6 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 }
 
-export type EventHandler<Args extends unknown[]> = (...args: Args) => void;
-
-class MiniEventEmitter<Events extends Record<string, unknown[]>> {
-    private readonly handlers = new Map<keyof Events, Set<EventHandler<unknown[]>>>();
-
-    addListener<Event extends keyof Events>(event: Event, handler: EventHandler<Events[Event]>) {
-        const handlersSet = this.initAndGetHandlersSet(event);
-        handlersSet.add(handler);
-
-        return () => {
-            handlersSet.delete(handler);
-            this.cleanupHandlersSet(event);
-        };
-    }
-
-    emit<Event extends keyof Events>(event: Event, ...params: Events[Event]) {
-        const handlersSet = this.handlers.get(event);
-        if (!handlersSet) return;
-
-        handlersSet.forEach(handler => handler(...params));
-    }
-
-    private initAndGetHandlersSet(event: keyof Events) {
-        const existing = this.handlers.get(event);
-        if (existing) return existing;
-
-        const newSet = new Set<EventHandler<unknown[]>>();
-        this.handlers.set(event, newSet);
-        return newSet;
-    }
-
-    private cleanupHandlersSet(event: keyof Events) {
-        const set = this.handlers.get(event);
-        if (!set || set.size > 0) return;
-        this.handlers.delete(event);
-    }
-}
-
-function getListenerAdder<Events extends Record<string, unknown[]>>(emitter: MiniEventEmitter<Events>): MiniEventEmitter<Events>["addListener"] {
-    return emitter.addListener.bind(emitter);
-}
-
 export interface Canvas {
     get size(): Vector2;
 }
@@ -1282,6 +1215,12 @@ export default class InteractiveCanvas implements Canvas {
      * The frame rate to target. Zero means the maximum possible.
      */
     targetFrameRate = 0;
+
+    /**
+     * When true, coroutines won't run
+     */
+    pauseCoroutines = false;
+
     private readonly _canv: HTMLCanvasElement;
     private readonly eventEmitter = new MiniEventEmitter<InteractiveCanvasEvents>();
     public readonly addListener = getListenerAdder(this.eventEmitter);
@@ -1348,6 +1287,10 @@ export default class InteractiveCanvas implements Canvas {
 
     public get ctx() {
         return this._contextFactory.ctx;
+    }
+
+    get context() {
+        return this._contextFactory.createGlobalContext();
     }
 
     private static drawDebugLine(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", offsetY: number, items: { name: string, message: string }[]) {
@@ -1499,7 +1442,7 @@ export default class InteractiveCanvas implements Canvas {
             this._contextFactory.preFrame();
 
             const ctx = this._contextFactory.createContext();
-            this._coroutineManager.frame(ctx);
+            if (!this.pauseCoroutines) this._coroutineManager.frame(ctx);
             frame(ctx);
             ctx.disposeListeners.forEach(listener => listener());
 
@@ -1612,5 +1555,9 @@ export class OffscreenCanvas implements Canvas {
             screenSize: this.size,
             disposeListeners: []
         };
+    }
+
+    getCanvasElement() {
+        return this.canvas;
     }
 }

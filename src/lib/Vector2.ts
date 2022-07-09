@@ -3,6 +3,7 @@ export const DEG2RAD = Math.PI / 180;
 
 export default class Vector2 {
     private _source: { x: number, y: number };
+    #nav = false;
 
     constructor(x: number = 0, y: number = 0) {
         if (Number.isNaN(x) || Number.isNaN(y)) {
@@ -24,22 +25,41 @@ export default class Vector2 {
         return new Vector2(-1, -1);
     }
 
+    /**
+     * A `Vector2` that isn't equal to anything, including itself.
+     * If you try to read it's value, an error is thrown.
+     * It's here to be used as a null value when you can't use null.
+     */
+    static get notAVector(): Vector2 {
+        const vec = new Vector2(0, 0);
+        vec.#nav = true;
+        return vec;
+    }
+
+    get isNaV() {
+        return this.#nav;
+    }
+
     public get x() {
+        this.#assertNotNav();
         if (!this._source) return undefined;
         return this._source.x;
     }
 
     public set x(value: number) {
+        this.#assertNotNav();
         if (!this._source) this._source = {x: 0, y: 0};
         this._source.x = value;
     }
 
     public get y() {
+        this.#assertNotNav();
         if (!this._source) return undefined;
         return this._source.y;
     }
 
     public set y(value: number) {
+        this.#assertNotNav();
         if (!this._source) this._source = {x: 0, y: 0};
         this._source.y = value;
     }
@@ -56,6 +76,7 @@ export default class Vector2 {
      * Returns true if the points are at the same location
      */
     static equal(a: Vector2, b: Vector2) {
+        if (a.isNaV || b.isNaV) return false;
         return a.x === b.x && a.y === b.y;
     }
 
@@ -225,6 +246,7 @@ export default class Vector2 {
     }
 
     toString() {
+        if (this.isNaV) return "[NaV]";
         return `[${this.x}, ${this.y}]`;
     }
 
@@ -244,5 +266,9 @@ export default class Vector2 {
             Math.round(this.x),
             Math.round(this.y)
         );
+    }
+
+    #assertNotNav() {
+        if (this.isNaV) throw new Error("Cannot operate on a NaV");
     }
 }
