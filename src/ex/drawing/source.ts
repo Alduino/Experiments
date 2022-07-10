@@ -192,20 +192,6 @@ canvas.start(ctx => {
     const imageSource = componentsRoot.getImageSource();
     copyFrom(imageSource, ctx, Vector2.zero);
 
-    if (ctx.keyDown.get("d")) {
-        if (!popInspectCursor) {
-            popInspectCursor = canvas.pushCursor("crosshair");
-        }
-
-        drawScuiDebug(ctx, componentsRoot);
-        canvas.pauseCoroutines = true;
-    } else {
-        popInspectCursor?.();
-        popInspectCursor = null;
-
-        canvas.pauseCoroutines = false;
-    }
-
     if (cursorPosition) {
         circle(ctx, cursorPosition.add(drawingOffset), brushRadius, {
             // TODO better way to set opacity
@@ -221,6 +207,20 @@ canvas.start(ctx => {
             thickness: 1,
             colour: "#0006"
         });
+    }
+
+    if (ctx.keyDown.get("d")) {
+        if (!popInspectCursor) {
+            popInspectCursor = canvas.pushCursor("crosshair");
+        }
+
+        drawScuiDebug(ctx, componentsRoot);
+        canvas.pauseCoroutines = true;
+    } else {
+        popInspectCursor?.();
+        popInspectCursor = null;
+
+        canvas.pauseCoroutines = false;
     }
 
     canvas.drawCustomDebug(ctx, "tl", {
