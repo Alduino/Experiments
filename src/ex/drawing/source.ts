@@ -24,6 +24,7 @@ const drawingCtx = drawing.getContext();
 rect(drawingCtx, Vector2.zero, drawing.size, {fill: "white"});
 
 let cursorPosition: Vector2 | null = null;
+let fakeCursorPosition: Vector2 | null = null;
 let isPainting = false;
 let brushRadius = 5;
 
@@ -209,6 +210,18 @@ canvas.start(ctx => {
         });
     }
 
+    if (fakeCursorPosition) {
+        circle(ctx, fakeCursorPosition.add(drawingOffset), brushRadius, {
+            thickness: 3,
+            colour: "#fff9"
+        });
+
+        circle(ctx, fakeCursorPosition.add(drawingOffset), brushRadius, {
+            thickness: 1,
+            colour: "#0006"
+        });
+    }
+
     if (ctx.keyDown.get("d")) {
         if (!popInspectCursor) {
             popInspectCursor = canvas.pushCursor("crosshair");
@@ -300,7 +313,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
         const popCursor = canvas.pushCursor("ew-resize");
 
         let isResizing = false;
-        cursorPosition = drawing.size.divide(2);
+        fakeCursorPosition = drawing.size.divide(2);
 
         yield waitUntil.one([
             function* mouseExit() {
@@ -330,7 +343,7 @@ cm.startCoroutine(function* handleBrushSizeCollision() {
             }
         ]);
 
-        cursorPosition = null;
+        fakeCursorPosition = null;
         popCursor();
     }
 });
