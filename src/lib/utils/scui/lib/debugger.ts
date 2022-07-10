@@ -88,6 +88,8 @@ export function drawScuiDebug(ctx: InteractiveCanvasFrameContext, root: RootComp
             font: "12px sans-serif",
             align: "center"
         },
-        padding: new Vector2(4, 4)
+        padding: new Vector2(4, 4),
+        minPosition: new Vector2(10, 10),
+        maxPosition: ctx.screenSize.subtract(new Vector2(10, 10))
     });
 }

@@ -29,6 +29,8 @@ export interface TextWithBackgroundOptions {
     background: RenderOptions;
     text: (FillOptions | OutlineOptions) & TextOptions;
     padding: Vector2;
+    minPosition?: Vector2;
+    maxPosition?: Vector2;
 }
 
 export interface RenderDisabledOptions {
@@ -258,13 +260,33 @@ export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
 
 ///--- COMPOSITE SHAPES ---\\\
 
+function ensureWithinBounds(position: Vector2, size: Vector2, boundsMin: Vector2 | null, boundsMax: Vector2 | null) {
+    let x = position.x;
+    let y = position.y;
+
+    if (boundsMax) {
+        if (x + size.x > boundsMax.x) x = boundsMax.x - size.x;
+        if (y + size.y > boundsMax.y) y = boundsMax.y - size.y;
+    }
+
+    if (boundsMin) {
+        if (x < boundsMin.x) x = boundsMin.x;
+        if (y < boundsMin.y) y = boundsMin.y;
+    }
+
+    return new Vector2(x, y);
+}
+
 export function textWithBackground(ctx: CanvasFrameContext, pos: Vector2, value: string, opts: TextWithBackgroundOptions) {
     const textMeasurement = measureText(ctx, value, opts.text);
     const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
     const rectSize = textSize.add(opts.padding.add(opts.padding));
     const rectOffset = opts.text.align === "center" ? textSize.justX.divide(2) : Vector2.zero;
-    roundedRectangle(ctx, pos.subtract(rectOffset), pos.add(rectSize).subtract(rectOffset), 3, opts.background);
-    text(ctx, pos.add(opts.padding), value, opts.text);
+    const targetPosition = pos.subtract(rectOffset);
+    const actualPosition = ensureWithinBounds(targetPosition, rectSize, opts.minPosition ?? null, opts.maxPosition ?? null);
+
+    roundedRectangle(ctx, actualPosition, actualPosition.add(rectSize), 3, opts.background);
+    text(ctx, actualPosition.add(rectOffset).add(opts.padding), value, opts.text);
 }
 
 export function circle(ctx: CanvasFrameContext, centre: Vector2, radius: number, opts: RenderOptions) {

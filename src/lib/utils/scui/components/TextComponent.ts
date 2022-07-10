@@ -11,6 +11,7 @@ export default class TextComponent extends Component {
     #fill = this.createLinkedReference("black", {
         triggers: {
             resize: false,
+            childPositions: false,
             render: true
         }
     });

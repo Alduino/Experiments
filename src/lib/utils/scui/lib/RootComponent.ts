@@ -55,4 +55,8 @@ export default class RootComponent {
     getComponentUnderPosition(position: Vector2) {
         return this.#childInterface.getComponentUnderPosition(position);
     }
+
+    setSize(size: Vector2) {
+        this.#childInterface.setChildSize(size);
+    }
 }

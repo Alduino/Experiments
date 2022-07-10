@@ -67,13 +67,7 @@ export default class FlexComponent extends Component {
     }
 
     protected render(ctx: CanvasFrameContext) {
-        clear(ctx, Vector2.zero, this.getSize());
-
-        for (const child of this.getChildren()) {
-            const imageSource = this.getChildImageSource(child);
-            const position = this.#childrenPositions.get(child);
-            copyFrom(imageSource, ctx, position.get());
-        }
+        this.renderChildren(ctx);
     }
 
     protected getSizeRequest(ctx: CanvasFrameContext): SizeRequest {

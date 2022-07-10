@@ -10,6 +10,7 @@ import Vector2 from "../../../Vector2";
 import SizeRequest from "../lib/SizeRequest";
 import {ref} from "../../ref";
 import SingleEventEmitter from "../../SingleEventEmitter";
+import TextComponent from "./TextComponent";
 
 const enum PointerState {
     out,
@@ -32,7 +33,9 @@ export default class ButtonComponent extends Component {
 
     readonly #pointerState = this.createLinkedReference(PointerState.out, {
         triggers: {
-            resize: false
+            render: true,
+            resize: false,
+            childPositions: false
         }
     });
 
@@ -105,6 +108,17 @@ export default class ButtonComponent extends Component {
     set paddingY(value) {
         this.#paddingTop.set(value);
         this.#paddingBottom.set(value);
+    }
+
+    static createWithText(canvas: InteractiveCanvas, text: string): { button: ButtonComponent, text: TextComponent } {
+        const textComponent = new TextComponent();
+        textComponent.text = text;
+        textComponent.fill = "white";
+
+        const button = new ButtonComponent(canvas);
+        button.addChild(textComponent);
+
+        return {button, text: textComponent};
     }
 
     protected render(ctx: CanvasFrameContext) {

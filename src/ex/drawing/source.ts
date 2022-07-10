@@ -15,6 +15,7 @@ import RootComponent from "../../lib/utils/scui/lib/RootComponent";
 import ButtonComponent from "../../lib/utils/scui/components/ButtonComponent";
 import RectangleComponent from "../../lib/utils/scui/components/RectangleComponent";
 import {drawScuiDebug} from "../../lib/utils/scui/lib/debugger";
+import AbsoluteComponent from "../../lib/utils/scui/components/AbsoluteComponent";
 
 const canvas = new InteractiveCanvas("canvas");
 
@@ -53,17 +54,6 @@ canvas.addListener("resize", () => {
 });
 
 const cm = canvas.getCoroutineManager();
-
-function createButton(initialLabel: string) {
-    const text = new TextComponent();
-    text.text = initialLabel;
-    text.fill = "white";
-
-    const button = new ButtonComponent(canvas);
-    button.addChild(text);
-
-    return button;
-}
 
 const colours = {
     black: "#000000",
@@ -107,17 +97,74 @@ for (const [, value] of Object.entries(colours)) {
     colourButtonsContainer.addChild(button);
 }
 
-const colourButtonsRoot = new RootComponent();
-colourButtonsRoot.setChild(colourButtonsContainer);
+const saveButton = ButtonComponent.createWithText(canvas, "Save");
+
+saveButton.button.clickedEvent.listen(async () => {
+    const blob = await drawing.saveToBlob("image/png");
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = "drawing.png";
+    link.click();
+    URL.revokeObjectURL(blobUrl);
+});
+
+const loadButton = ButtonComponent.createWithText(canvas, "Load (overwrites)");
+
+loadButton.button.clickedEvent.listen(async () => {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+
+    let resolve: () => void;
+    const focusPromise = new Promise<void>(yay => resolve = yay);
+    window.addEventListener("focus", resolve);
+    fileInput.click();
+    await focusPromise;
+    window.removeEventListener("focus", resolve);
+
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const image = document.createElement("img");
+    const loadPromise = new Promise<void>(yay => resolve = yay);
+    image.addEventListener("load", resolve);
+    const source = URL.createObjectURL(file);
+    image.src = source;
+    await loadPromise;
+    image.removeEventListener("load", resolve);
+    URL.revokeObjectURL(source);
+
+    const ctx = drawing.getContext();
+    rect(ctx, Vector2.zero, ctx.screenSize, {fill: "white"});
+    ctx.renderer.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, drawing.size.x, drawing.size.y);
+});
+
+const saveLoadContainer = new FlexComponent();
+saveLoadContainer.direction = "row";
+saveLoadContainer.addChildren(saveButton.button, loadButton.button);
+
+const absolutePositioner = new AbsoluteComponent();
+absolutePositioner.addChildren(colourButtonsContainer, saveLoadContainer);
+absolutePositioner.setChildPosition(colourButtonsContainer, getDrawingOffset().add(drawing.size.justX).add(new Vector2(10, 0)));
+absolutePositioner.setChildPosition(saveLoadContainer, getDrawingOffset().add(drawing.size.justY).add(new Vector2(0, 10)));
+
+const componentsRoot = new RootComponent();
+componentsRoot.setChild(absolutePositioner);
+
+componentsRoot.setDrawnPosition(Vector2.zero);
+componentsRoot.setSize(canvas.size);
 
 let popInspectCursor: () => void | null = null;
 
 canvas.start(ctx => {
     const drawingOffset = getDrawingOffset();
 
-    const buttonsPosition = drawingOffset.add(drawing.size.justX).add(new Vector2(10, 0));
-    colourButtonsRoot.setDrawnPosition(buttonsPosition);
-    colourButtonsRoot.handleBatchedUpdates();
+    absolutePositioner.setChildPosition(colourButtonsContainer, drawingOffset.add(drawing.size.justX).add(new Vector2(10, 0)));
+    absolutePositioner.setChildPosition(saveLoadContainer, drawingOffset.add(drawing.size.justY).add(new Vector2(0, 10)));
+
+    componentsRoot.setSize(canvas.size);
+    componentsRoot.handleBatchedUpdates();
 
     rect(ctx, Vector2.zero, canvas.size, {
         fill: "#666"
@@ -141,16 +188,16 @@ canvas.start(ctx => {
 
     copyFrom(drawingCtx, ctx, drawingOffset);
 
-    colourButtonsRoot.render();
-    const imageSource = colourButtonsRoot.getImageSource();
-    copyFrom(imageSource, ctx, buttonsPosition);
+    componentsRoot.render();
+    const imageSource = componentsRoot.getImageSource();
+    copyFrom(imageSource, ctx, Vector2.zero);
 
     if (ctx.keyDown.get("d")) {
         if (!popInspectCursor) {
             popInspectCursor = canvas.pushCursor("crosshair");
         }
 
-        drawScuiDebug(ctx, colourButtonsRoot);
+        drawScuiDebug(ctx, componentsRoot);
         canvas.pauseCoroutines = true;
     } else {
         popInspectCursor?.();

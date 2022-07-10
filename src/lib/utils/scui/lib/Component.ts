@@ -7,10 +7,26 @@ import Association from "../Association";
 import ParentInterface from "./ParentInterface";
 import Batch from "../../Batch";
 import {GET_GLOBAL_BR, GET_GLOBAL_TL} from "./debugger-symbols";
+import {clear, copyFrom} from "../../../imgui";
 
 export interface UpdateDependencyTriggers {
+    /**
+     * Renders the component when the value changes.
+     * @default true
+     */
     render: boolean;
+
+    /**
+     * Recalculates the component size when the value changes.
+     * @default true
+     */
     resize: boolean;
+
+    /**
+     * Recalculates the position of the component's children when the value changes.
+     * @default true
+     */
+    childPositions: boolean;
 }
 
 interface InternalUpdateDependencyTriggers extends UpdateDependencyTriggers {
@@ -58,6 +74,7 @@ export default abstract class Component {
     readonly #initUpdates: InternalUpdateDependencyTriggers = {
         resize: false,
         render: false,
+        childPositions: true,
         _transform: false,
         _position: false,
         _resizedEvent: false
@@ -71,6 +88,7 @@ export default abstract class Component {
     readonly #userGlobalPositionUpdatedEvent = new SingleEventEmitter<[position: Vector2]>();
     readonly #initialisedEvent = new SingleEventEmitter();
     readonly #resizedEvent = new SingleEventEmitter();
+    readonly #childPositionsUpdateEvent = new SingleEventEmitter();
 
     readonly #childSizeRequests = this.createChildrenMetadata<Reference<SizeRequest>>(() => ref({
         minSize: Vector2.notAVector
@@ -100,6 +118,7 @@ export default abstract class Component {
         this.#childResizedEvent.listen(() => this.#handleChildResized());
         this.#transformUpdateEvent.listen(() => this.#updateTransform());
         this.#globalPositionUpdatedEvent.listen(() => this.#handleGlobalPositionUpdated());
+        this.#childPositionsUpdateEvent.listen(() => this.#updateChildPositions());
     }
 
     get childAddedEvent() {
@@ -133,6 +152,7 @@ export default abstract class Component {
             },
             renderTree() {
                 child.#renderTree();
+                child.#renderRequired = false;
             },
             setPosition(position: Vector2) {
                 child.#globalPosition.set(position);
@@ -254,6 +274,22 @@ export default abstract class Component {
     }
 
     /**
+     * A helper method that renders the component's children at the positions returned by `getChildPosition`.
+     * Your implementation of `getChildPosition` should be fast as this method calls it directly without any memoisation.
+     */
+    protected renderChildren(ctx: CanvasFrameContext, clearCanvas = true) {
+        if (clearCanvas) clear(ctx);
+
+        const children = this.getChildren();
+
+        for (const child of children) {
+            const position = this.getChildPosition(child);
+            const imageSource = this.getChildImageSource(child);
+            copyFrom(imageSource, ctx, position);
+        }
+    }
+
+    /**
      * Renders this component onto the context.
      */
     protected abstract render(ctx: CanvasFrameContext): void;
@@ -296,6 +332,7 @@ export default abstract class Component {
         const batch = parent.getBatch();
         this.#childResizedEvent.enableBatching(batch);
         this.#globalPositionUpdatedEvent.enableBatching(batch);
+        this.#childPositionsUpdateEvent.enableBatching(batch);
 
         for (const child of this.#childrenNeedingInitialisation) {
             this.#initialiseChild(child);
@@ -324,6 +361,7 @@ export default abstract class Component {
         if (this.#initialised) {
             if (triggers.resize !== false) this.#requestResize();
             if (triggers.render !== false) this.#renderRequestedEvent.emit();
+            if (triggers.childPositions !== false) this.#childPositionsUpdateEvent.emit();
             if (triggers._transform) this.#transformUpdateEvent.emit();
             if (triggers._position) this.#globalPositionUpdatedEvent.emit();
             if (triggers._resizedEvent) this.#resizedEvent.emit();
@@ -367,7 +405,7 @@ export default abstract class Component {
 
             for (const identifier of children) {
                 const size = childSizes.get(identifier);
-                if (!size) throw new Error("Missing size for child");
+                if (!size) throw new Error(`Missing size for child ${identifier.description}`);
 
                 const child = this.#children.getFromB(identifier);
                 child.#size.set(size);
@@ -390,13 +428,13 @@ export default abstract class Component {
 
     #renderTree() {
         for (const child of this.#children.aValues()) {
-            this.#renderRequired ||= child.#renderRequired;
             child.#renderTree();
+            this.#renderRequired ||= child.#renderRequired;
+            child.#renderRequired = false;
         }
 
         if (this.#renderRequired) {
             this.#doRendering();
-            this.#renderRequired = false;
         }
     }
 

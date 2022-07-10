@@ -1544,6 +1544,10 @@ export class OffscreenCanvas implements Canvas {
         return new Vector2(this.canvas.width, this.canvas.height);
     }
 
+    saveToBlob(type?: string, quality?: number) {
+        return new Promise<Blob>(yay => this.canvas.toBlob(yay, type, quality));
+    }
+
     setSizeAndClear(newSize: Vector2) {
         this.canvas.width = newSize.x;
         this.canvas.height = newSize.y;
