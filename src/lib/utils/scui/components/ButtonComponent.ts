@@ -2,6 +2,7 @@ import Component from "../lib/Component";
 import InteractiveCanvas, {
     CanvasFrameContext,
     CoroutineManager,
+    FocusTarget,
     RectangleCollider,
     waitUntil
 } from "../../../canvas-setup";
@@ -41,6 +42,7 @@ export default class ButtonComponent extends Component {
 
     readonly #canvas: InteractiveCanvas;
     readonly #coroutineManager: CoroutineManager;
+    readonly #focusTarget: FocusTarget;
 
     readonly #collider = ref(new RectangleCollider(Vector2.zero, Vector2.zero));
 
@@ -50,6 +52,7 @@ export default class ButtonComponent extends Component {
         super();
         this.#canvas = canvas;
         this.#coroutineManager = canvas.getCoroutineManager();
+        this.#focusTarget = this.#coroutineManager.createFocusTarget();
 
         this.initialisedEvent.listen(() => this.#handleInitialised());
         this.globalPositionUpdatedEvent.listen(() => this.#updateCollider());
@@ -112,6 +115,7 @@ export default class ButtonComponent extends Component {
 
     static createWithText(canvas: InteractiveCanvas, text: string): { button: ButtonComponent, text: TextComponent } {
         const textComponent = new TextComponent();
+        textComponent.displayName = "Button Label";
         textComponent.text = text;
         textComponent.fill = "white";
 
@@ -172,10 +176,16 @@ export default class ButtonComponent extends Component {
         const canvas = this.#canvas;
         const pointerState = this.#pointerState;
         const clickedEvent = this.#clickedEvent;
+        const focusTarget = this.#focusTarget;
+        const coroutineManager = this.#coroutineManager;
 
-        this.#coroutineManager.startCoroutine(function* handleButtonInteraction() {
+        coroutineManager.startCoroutine(function* handleButtonInteraction() {
             while (true) {
-                yield waitUntil.mouseEntered(collider);
+                focusTarget.blur();
+
+                yield waitUntil.mouseEntered(collider, {focusTarget});
+                focusTarget.focus();
+
                 const popMouse = canvas.pushCursor("pointer");
                 pointerState.set(PointerState.over);
 
@@ -199,7 +209,9 @@ export default class ButtonComponent extends Component {
 
                 if (x.data === 0) {
                     x = yield waitUntil.one([
-                        waitUntil.mouseExited(collider, false, 10),
+                        waitUntil.mouseExited(collider, {
+                            minDistance: 10
+                        }),
                         waitUntil.leftMouseReleased()
                     ]);
                 }

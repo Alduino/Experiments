@@ -19,13 +19,19 @@ export default class RootComponent {
      */
     setChild(child: Component) {
         const updateChildSizeRequestKey = Symbol();
+        let lastChildSizeRequest: SizeRequest | null = null;
 
         this.#childInterface = Component.setupRoot(child, {
             getBatch: () => this.#batch,
             updateChildSizeRequest: (_, newSizeRequest: SizeRequest) => {
+                lastChildSizeRequest = newSizeRequest;
+
                 this.#batch.add(updateChildSizeRequestKey, () => {
-                    this.#childInterface.setChildSize(newSizeRequest.requestedSize ?? newSizeRequest.minSize);
+                    this.#childInterface.setChildSize(lastChildSizeRequest.requestedSize ?? lastChildSizeRequest.minSize);
                 });
+            },
+            getChildName: () => {
+                return `${this.#childInterface.getFullDisplayName()} (root)`;
             }
         });
     }

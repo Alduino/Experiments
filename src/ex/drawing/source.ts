@@ -14,7 +14,7 @@ import TextComponent from "../../lib/utils/scui/components/TextComponent";
 import RootComponent from "../../lib/utils/scui/lib/RootComponent";
 import ButtonComponent from "../../lib/utils/scui/components/ButtonComponent";
 import RectangleComponent from "../../lib/utils/scui/components/RectangleComponent";
-import {drawScuiDebug} from "../../lib/utils/scui/lib/debugger";
+import {drawScuiInspector} from "../../lib/utils/scui/lib/debugger";
 import AbsoluteComponent from "../../lib/utils/scui/components/AbsoluteComponent";
 
 const canvas = new InteractiveCanvas("canvas");
@@ -227,7 +227,7 @@ canvas.start(ctx => {
             popInspectCursor = canvas.pushCursor("crosshair");
         }
 
-        drawScuiDebug(ctx, componentsRoot);
+        drawScuiInspector(ctx, componentsRoot);
         canvas.pauseCoroutines = true;
     } else {
         popInspectCursor?.();

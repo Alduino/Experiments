@@ -6,7 +6,7 @@ import {deref, ref, Reference} from "../../ref";
 import Association from "../Association";
 import ParentInterface from "./ParentInterface";
 import Batch from "../../Batch";
-import {GET_GLOBAL_BR, GET_GLOBAL_TL} from "./debugger-symbols";
+import {GET_GLOBAL_BR, GET_GLOBAL_TL, GET_NAME} from "./inspector-symbols";
 import {clear, copyFrom} from "../../../imgui";
 
 export interface UpdateDependencyTriggers {
@@ -54,6 +54,8 @@ export interface RootChildInterface {
     setPosition(position: Vector2): void;
 
     getComponentUnderPosition(position: Vector2): Component | null;
+
+    getFullDisplayName(): string;
 }
 
 export type CompareFn<in T> = (a: T, b: T) => boolean;
@@ -70,6 +72,7 @@ export default abstract class Component {
     #initialised = false;
     #renderRequired = false;
     #childCount = 0;
+    #userDisplayName: string | undefined;
 
     readonly #initUpdates: InternalUpdateDependencyTriggers = {
         resize: false,
@@ -121,6 +124,25 @@ export default abstract class Component {
         this.#childPositionsUpdateEvent.listen(() => this.#updateChildPositions());
     }
 
+    /**
+     * The current size of this component.
+     * @remarks This value may change when you batched updates or when something updates this component's transform.
+     */
+    get size() {
+        return this.#size.get();
+    }
+
+    /**
+     * A user-defined name to assign to this component in the inspector.
+     */
+    get displayName() {
+        return this.#userDisplayName;
+    }
+
+    set displayName(name) {
+        this.#userDisplayName = name;
+    }
+
     get childAddedEvent() {
         return this.#childAddedEvent.getListener();
     }
@@ -159,6 +181,9 @@ export default abstract class Component {
             },
             getComponentUnderPosition(position: Vector2): Component | null {
                 return child.#getComponentUnderPosition(position);
+            },
+            getFullDisplayName() {
+                return child.#getFullDisplayName();
             }
         };
     }
@@ -171,6 +196,10 @@ export default abstract class Component {
         return this.#globalPosition.get().add(this.#size.get());
     }
 
+    [GET_NAME]() {
+        return this.#parent.getChildName(this);
+    }
+
     addChild(child: Component) {
         const maxChildren = this.getChildLimit();
 
@@ -180,7 +209,7 @@ export default abstract class Component {
 
         this.#childCount++;
 
-        const identifier = Symbol(this.#childCount + ":" + child.constructor.name);
+        const identifier = Symbol(`${child.#getFullDisplayName()} (#${this.#childCount})`);
         this.#children.add(child, identifier);
 
         this.#childAddedEvent.emit(identifier);
@@ -322,6 +351,20 @@ export default abstract class Component {
         throw new Error(`${this.constructor.name} requires, but is missing, an implementation of \`getChildPosition\``);
     }
 
+    /**
+     * Gets the display name of this component. Returns the class name by default without the "Component" suffix (mangled in production builds).
+     */
+    protected getComponentName(): string {
+        const constructorName = this.constructor.name;
+        const unwantedSuffix = "Component";
+
+        if (constructorName.endsWith(unwantedSuffix)) {
+            return constructorName.substring(0, constructorName.length - unwantedSuffix.length);
+        } else {
+            return constructorName;
+        }
+    }
+
     #createLinkedReference<T>(initialValue: T, options?: Partial<InternalUpdateDependencyOptions<T>>): Reference<T> {
         return this.createLinkedReference(initialValue, options);
     }
@@ -388,6 +431,12 @@ export default abstract class Component {
         this.#childResizedEvent.emit();
     }
 
+    #getChildName(child: Component) {
+        const childIdentifier = this.#children.getFromA(child);
+        if (!childIdentifier) throw new Error("Component is not our child");
+        return childIdentifier.description;
+    }
+
     #getBatch(): Batch {
         return this.#parent.getBatch();
     }
@@ -422,7 +471,8 @@ export default abstract class Component {
     #initialiseChild(child: Component) {
         child.#init({
             getBatch: this.#getBatch.bind(this),
-            updateChildSizeRequest: this.#updateChildSizeRequest.bind(this)
+            updateChildSizeRequest: this.#updateChildSizeRequest.bind(this),
+            getChildName: this.#getChildName.bind(this)
         });
     }
 
@@ -467,5 +517,11 @@ export default abstract class Component {
         }
 
         return null;
+    }
+
+    #getFullDisplayName() {
+        const componentName = this.getComponentName();
+        if (this.displayName) return `${componentName} - ${this.displayName}`;
+        else return componentName;
     }
 }

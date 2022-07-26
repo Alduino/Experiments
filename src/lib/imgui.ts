@@ -234,6 +234,10 @@ function isCanvasFrameContext(value: unknown): value is CanvasFrameContext {
 export function copyFrom(source: CanvasFrameContext | CanvasImageSource, target: CanvasFrameContext, offset = Vector2.zero) {
     const imageData = isCanvasFrameContext(source) ? source.renderer.canvas : source;
 
+    if (imageData.width === 0 && imageData.height === 0) {
+        throw new Error("Cannot draw from an empty source");
+    }
+
     target.renderer.drawImage(imageData, offset.x, offset.y);
 }
 

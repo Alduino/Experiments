@@ -393,6 +393,8 @@ interface CoroutineAwaitBase<T> {
 }
 
 interface NormalCoroutineAwait<T> extends CoroutineAwaitBase<T> {
+    isNestAwait?: never;
+
     /**
      * If this is a promise, this awaiter (and its coroutine) will not be evaluated until it resolves. Promise rejection
      * will not be handled.
@@ -401,6 +403,12 @@ interface NormalCoroutineAwait<T> extends CoroutineAwaitBase<T> {
      * optimisation if your awaiter is slow (`shouldContinue()` will not be called until the promise resolves).
      */
     delay?: Promise<void>;
+
+    /**
+     * The focus target to use to control this awaiter.
+     * @see CoroutineManager.createFocusTarget
+     */
+    focusTarget?: FocusTarget;
 
     /**
      * Called when the awaiter is first called, but from the manager instead of the user.
@@ -417,6 +425,8 @@ interface NestCoroutineAwait<T> extends CoroutineAwaitBase<T> {
     isNestAwait: true;
 
     delay?: never;
+
+    focusTarget?: never;
 
     /**
      * Disposes of all the children `StartCoroutineAwait`ers
@@ -473,7 +483,11 @@ interface ExoticCoroutineAwait_Dispose extends ExoticCoroutineAwait<typeof dispo
     callback(): void;
 }
 
-type ExoticCoroutineAwaitTypes = ExoticCoroutineAwait_Dispose;
+interface ExoticCoroutineAwait_Options extends ExoticCoroutineAwait<typeof defaultOptionsMarker> {
+    options: CommonAwaiterOptions;
+}
+
+type ExoticCoroutineAwaitTypes = ExoticCoroutineAwait_Dispose | ExoticCoroutineAwait_Options;
 
 function isExoticCoroutineAwait(awaiter: unknown): awaiter is ExoticCoroutineAwait<symbol> {
     if (!awaiter) return false;
@@ -525,6 +539,33 @@ function getAwaiter(manager: CoroutineManager, awaiterCastable: AwaiterCastable)
 
 export type NestHandler<T> = (results: CoroutineAwaitResult<unknown>[]) => CoroutineAwaitResult<T>;
 export type NestErrorHandler<T> = (error: Error, trace: string[], failedIndex: number) => CoroutineAwaitResult<T> | false;
+
+export interface CommonAwaiterOptions {
+    /**
+     * The focus target to use to control this awaiter.
+     * @see CoroutineManager.createFocusTarget
+     */
+    focusTarget?: FocusTarget;
+}
+
+export interface MouseEnteredOptions extends CommonAwaiterOptions {
+    /**
+     * When true, the mouse has to have been outside before the awaiter can return.
+     */
+    mustStartOutside?: boolean;
+}
+
+export interface MouseExitedOptions extends CommonAwaiterOptions {
+    /**
+     * When true, the mouse has to have been inside before the awaiter can return.
+     */
+    mustStartInside?: boolean;
+
+    /**
+     * The distance away from the collider before the awaiter can return.
+     */
+    minDistance?: number;
+}
 
 /**
  * Various coroutine awaiters
@@ -580,11 +621,11 @@ export const waitUntil = {
                     for (let i = 0; i < awaiters.length; i++) {
                         const castable = awaiters[i];
 
+                        // can't do this outside as `cm` isn't set yet
                         const awaiter = castedAwaiters.get(castable) ?? getAwaiter(cm, castable);
                         castedAwaiters.set(castable, awaiter);
 
                         if (isStartCoroutineAwait(awaiter) && !coroutineAwaiters.has(awaiter)) {
-                            // can't do this outside as `cm` isn't set yet
                             awaiter.cancelRootCheck();
                             coroutineAwaiters.add(awaiter);
                         }
@@ -684,8 +725,9 @@ export const waitUntil = {
     /**
      * Waits until the left mouse button is pressed
      */
-    leftMousePressed(): CoroutineAwait<void> {
+    leftMousePressed(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.leftMousePressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -697,8 +739,9 @@ export const waitUntil = {
     /**
      * Waits until the right mouse button is pressed
      */
-    rightMousePressed(): CoroutineAwait<void> {
+    rightMousePressed(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.rightMousePressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -710,8 +753,9 @@ export const waitUntil = {
     /**
      * Waits until the left mouse button is released
      */
-    leftMouseReleased(): CoroutineAwait<void> {
+    leftMouseReleased(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.leftMouseReleased",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -723,8 +767,9 @@ export const waitUntil = {
     /**
      * Waits until the specified key is pressed
      */
-    keyPressed(key: string): CoroutineAwait<void> {
+    keyPressed(key: string, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.keyPressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -736,8 +781,9 @@ export const waitUntil = {
     /**
      * Waits until the specified key is released
      */
-    keyReleased(key: string): CoroutineAwait<void> {
+    keyReleased(key: string, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.keyReleased",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -749,8 +795,9 @@ export const waitUntil = {
     /**
      * Waits until the mouse is moved
      */
-    mouseMoved(): CoroutineAwait<void> {
+    mouseMoved(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.mouseMoved",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -762,12 +809,15 @@ export const waitUntil = {
     /**
      * Waits until the mouse enters the shape.
      * @param shape A list of points that creates an outline.
-     * @param mustStartOutside When true, the mouse has to have been outside before the awaiter can return.
+     * @param options Various options to control the awaiter
      */
-    mouseEntered(shape: Dereffable<Collider>, mustStartOutside = false): CoroutineAwait<void> {
+    mouseEntered(shape: Dereffable<Collider>, options: MouseEnteredOptions = {}): CoroutineAwait<void> {
+        const {mustStartOutside = false, ...optionsRest} = options;
+
         let hasBeenOutside = !mustStartOutside;
 
         return {
+            ...optionsRest,
             identifier: "waitUntil.mouseEntered",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -788,13 +838,15 @@ export const waitUntil = {
     /**
      * Waits until the mouse exits the shape.
      * @param shape A list of points that creates an outline.
-     * @param mustStartInside When true, the mouse has to have been inside before the awaiter can return.
-     * @param minDistance The distance away from the collider before the awaiter can return.
+     * @param options Various options to control the awaiter
      */
-    mouseExited(shape: Dereffable<Collider>, mustStartInside = false, minDistance = 0): CoroutineAwait<void> {
-        let hasBeenInside = !mustStartInside;
+    mouseExited(shape: Dereffable<Collider>, options: MouseExitedOptions = {}): CoroutineAwait<void> {
+        const {minDistance = 0, mustStartInside = false, ...optionsRest} = options;
+
+        let hasBeenInside = !options.mustStartInside;
 
         return {
+            ...optionsRest,
             identifier: "waitUntil.mouseEntered",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -815,8 +867,9 @@ export const waitUntil = {
     /**
      * Waits until the user scrolls
      */
-    mouseScrolled(): CoroutineAwait<void> {
+    mouseScrolled(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.mouseScrolled",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
@@ -829,32 +882,23 @@ export const waitUntil = {
     /**
      * Waits for the specified number of milliseconds. Note that it will still be aligned to a frame.
      */
-    delay(ms: number, signal?: AbortSignal): CoroutineAwait<void> {
+    delay(ms: number, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         let state = false;
 
         let timeout: NodeJS.Timeout;
 
         const delay = new Promise<void>(yay => {
             timeout = setTimeout(() => {
-                signal?.removeEventListener("abort", handleAbort);
                 state = true;
                 yay();
             }, ms);
-
-            function handleAbort() {
-                signal.removeEventListener("abort", handleAbort);
-                clearTimeout(timeout);
-                yay();
-            }
-
-            signal?.addEventListener("abort", handleAbort);
         });
 
         return {
+            ...options,
             identifier: "waitUntil.delay",
             delay,
             shouldContinue() {
-                if (signal?.aborted) return {state: "aborted"};
                 return {state};
             }
         };
@@ -863,8 +907,9 @@ export const waitUntil = {
     /**
      * Waits until the next frame
      */
-    nextFrame(): CoroutineAwait<void> {
+    nextFrame(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.nextFrame",
             shouldContinue() {
                 return {state: true};
@@ -875,8 +920,9 @@ export const waitUntil = {
     /**
      * Calls the specified check function each frame, and completes when it returns true
      */
-    check(chk: (ctx: InteractiveCanvasFrameContext) => boolean): CoroutineAwait<void> {
+    check(chk: (ctx: InteractiveCanvasFrameContext) => boolean, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
         return {
+            ...options,
             identifier: "waitUntil.check",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal?.aborted) return {state: "aborted"};
@@ -889,6 +935,12 @@ export const waitUntil = {
 interface StartCoroutineResult {
     awaiter: CoroutineAwait<void>;
     abortController: AbortController;
+
+    /**
+     * Stops and disposes of the coroutine (always at a `yield` statement).
+     * @remarks Any dispose handlers run immediately and synchronously, not on the next frame.
+     */
+    stop(): void;
 }
 
 function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
@@ -898,7 +950,21 @@ function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
     return casted.abortController instanceof AbortController && typeof casted.awaiter === "object";
 }
 
-const disposeFunctionMarker = Symbol("dispose");
+const disposeFunctionMarker = Symbol("exotic:hookDispose()");
+const defaultOptionsMarker = Symbol("exotic:hookOptions()");
+
+export interface FocusTarget {
+    /**
+     * Activates this focus target, allowing its coroutines to run.
+     * Deactivates every other focus target.
+     */
+    focus(): void;
+
+    /**
+     * Deactivates this focus target, allowing every coroutine to run.
+     */
+    blur(): void;
+}
 
 export interface CoroutineManager {
     /**
@@ -939,14 +1005,86 @@ export interface CoroutineManager {
     startCoroutine(identifier: string, fn: CoroutineGeneratorFunction): StartCoroutineResult;
 
     /**
+     * Focus targets can be used to make sure only one coroutine can use awaiters at any time.
+     * If you pass a focus target to an awaiter, that awaiter can never run unless the passed focus target is the
+     * currently active one, or no focus targets are active.
+     *
+     * Call the `.focus()` method on a focus target to set it as the currently active one.
+     * Doing this makes all other focus targets become inactive.
+     *
+     * Calling `.blur()` stops the target being active.
+     * Until you activate another focus target, every awaiter can run.
+     */
+    createFocusTarget(): FocusTarget;
+
+    /**
+     * Creates a focus target that is active when any one of the passed sources are active.
+     *
+     * @remarks Calling `.focus()` on the result throws an error, as that method doesn't make senses here.
+     */
+    createCombinedFocusTarget(...sources: readonly FocusTarget[]): FocusTarget;
+
+    /**
      * The callback supplied to this function will be called when the coroutine is about to be disposed.
      * This will happen during one of the `yield` statements.
      * That `yield` statement will never complete.
      */
     hookDispose(callback: () => void): ExoticCoroutineAwait<typeof disposeFunctionMarker>;
+
+    /**
+     * This hook sets the default awaiter options for any awaiter calls after it in one coroutine.
+     * Calling multiple times merges the options, with later calls overwriting the earlier calls' values.
+     */
+    hookOptions(options: CommonAwaiterOptions): ExoticCoroutineAwait<typeof defaultOptionsMarker>;
+}
+
+class FocusTargetManager {
+    #combinedFocusTargets = new WeakMap<FocusTarget, readonly FocusTarget[]>();
+    #currentFocusTarget: FocusTarget | null = null;
+
+    createFocusTarget(): FocusTarget {
+        const target: FocusTarget = {
+            focus: () => this.#focus(target),
+            blur: () => this.#blur(target)
+        };
+
+        return target;
+    };
+
+    createCombinedFocusTarget(sources: readonly FocusTarget[]): FocusTarget {
+        const target: FocusTarget = {
+            focus() {
+                throw new Error("Cannot focus a combined focus target");
+            },
+            blur: () => this.#blur(target)
+        };
+
+        this.#combinedFocusTargets.set(target, sources);
+
+        return target;
+    }
+
+    isFocused(target: FocusTarget) {
+        if (this.#currentFocusTarget === null) return true;
+
+        const combined = this.#combinedFocusTargets.get(target);
+
+        if (combined) return combined.some(target => this.isFocused(target));
+        else return target === this.#currentFocusTarget;
+    }
+
+    #focus(target: FocusTarget) {
+        this.#currentFocusTarget = target;
+    }
+
+    #blur(target: FocusTarget) {
+        if (this.#currentFocusTarget !== target) return;
+        this.#currentFocusTarget = null;
+    }
 }
 
 interface StatefulCoroutine {
+    defaultOptions: CommonAwaiterOptions;
     disposeHandlers: Set<() => void>;
     coroutine: CoroutineGenerator;
     identifier: string;
@@ -957,6 +1095,7 @@ interface StatefulCoroutine {
     lastResult?: CoroutineAwait<unknown>;
     traceShiftCount: number;
     lastWaitingPromise?: Promise<void>;
+    disposalStack?: Error;
 
     onComplete(): void;
 }
@@ -978,6 +1117,7 @@ class CoroutineManagerImpl implements CoroutineManager {
     private checkCount = 0;
     private lastCheckCount = 0;
     private disposalCount = 0;
+    #focusTargetManager = new FocusTargetManager();
 
     get size() {
         return this._coroutines.size;
@@ -1034,6 +1174,7 @@ class CoroutineManagerImpl implements CoroutineManager {
             rootCheckDisabled: false,
             waitingForDelay: false,
             traceShiftCount: 0,
+            defaultOptions: {},
             onComplete() {
                 isComplete = true
             },
@@ -1078,8 +1219,17 @@ class CoroutineManagerImpl implements CoroutineManager {
 
         return {
             abortController,
-            awaiter
+            awaiter,
+            stop: () => this.disposeCoroutine(state)
         };
+    }
+
+    public createFocusTarget() {
+        return this.#focusTargetManager.createFocusTarget();
+    }
+
+    public createCombinedFocusTarget(...sources): FocusTarget {
+        return this.#focusTargetManager.createCombinedFocusTarget(sources);
     }
 
     public hookDispose(callback: () => void): ExoticCoroutineAwait_Dispose {
@@ -1089,7 +1239,22 @@ class CoroutineManagerImpl implements CoroutineManager {
         };
     }
 
+    public hookOptions(options: CommonAwaiterOptions): ExoticCoroutineAwait_Options {
+        return {
+            marker: defaultOptionsMarker,
+            options
+        };
+    }
+
     private disposeCoroutine(state: StatefulCoroutine) {
+        if (!this._coroutines.has(state)) {
+            throw new Error("Attempted to dispose a coroutine that has already been disposed", {
+                cause: state.disposalStack
+            });
+        }
+
+        state.disposalStack = new Error(`Coroutine "${state.identifier}" disposed`);
+
         state.disposeHandlers.forEach(handler => handler());
         this.disposalCount += state.disposeHandlers.size;
 
@@ -1113,6 +1278,10 @@ class CoroutineManagerImpl implements CoroutineManager {
                 state.lastWaitingPromise = promise;
                 return state.waitingForDelay = false;
             });
+            return;
+        }
+
+        if (state.lastResult?.focusTarget && !this.#focusTargetManager.isFocused(state.lastResult.focusTarget)) {
             return;
         }
 
@@ -1145,8 +1314,11 @@ class CoroutineManagerImpl implements CoroutineManager {
                             case disposeFunctionMarker:
                                 state.disposeHandlers.add(value.callback);
                                 break;
+                            case defaultOptionsMarker:
+                                Object.assign(state.defaultOptions, value.options);
+                                break;
                             default:
-                                throw new Error(`Invalid marker ${String(value.marker)}. This is a bug.`);
+                                throw new Error(`Invalid marker "${(value as { marker: symbol }).marker.description}". This is a bug.`);
                         }
 
                         res = state.coroutine.next({ctx, aborted, data});
@@ -1170,7 +1342,7 @@ class CoroutineManagerImpl implements CoroutineManager {
                         value.init?.(state.abortSignal);
                     }
 
-                    state.lastResult = value as CoroutineAwait<unknown>;
+                    state.lastResult = {...state.defaultOptions, ...value} as CoroutineAwait<unknown>;
                 }
             } else if (state.lastResult) {
                 state.lastResult.uninit?.();
@@ -1239,6 +1411,9 @@ export default class InteractiveCanvas implements Canvas {
     private readonly _coroutineManager = new CoroutineManagerImpl();
     private readonly cursorStack: CursorStackItem[] = [];
     private cursorUpdateSchedule = 0;
+    private usingManualCoroutineTiming = false;
+    private coroutinesRunThisFrame = false;
+    private currentFrameContext?: InteractiveCanvasFrameContext;
 
     public constructor(id: string) {
         this._canv = document.getElementById(id) as HTMLCanvasElement;
@@ -1428,6 +1603,22 @@ export default class InteractiveCanvas implements Canvas {
         };
     }
 
+    useManualCoroutineTiming() {
+        this.usingManualCoroutineTiming = true;
+
+        return () => {
+            if (!this.usingManualCoroutineTiming) {
+                throw new Error("The coroutine handler was called after manual coroutine timing was disabled");
+            }
+
+            this.handleCoroutines();
+        };
+    }
+
+    useAutomaticCoroutineTiming() {
+        this.usingManualCoroutineTiming = false;
+    }
+
     private deleteCursorStackItem(index: number) {
         const [removedCursor] = this.cursorStack.splice(index, 1);
         removedCursor.index = -1;
@@ -1442,7 +1633,8 @@ export default class InteractiveCanvas implements Canvas {
             this._contextFactory.preFrame();
 
             const ctx = this._contextFactory.createContext();
-            if (!this.pauseCoroutines) this._coroutineManager.frame(ctx);
+            this.currentFrameContext = ctx;
+            if (!this.usingManualCoroutineTiming) this.handleCoroutines();
             frame(ctx);
             ctx.disposeListeners.forEach(listener => listener());
 
@@ -1455,9 +1647,13 @@ export default class InteractiveCanvas implements Canvas {
             }
 
             this._contextFactory.postFrame();
+
+            if (!this.coroutinesRunThisFrame) throw new Error("The coroutine handler was not called in this frame");
+            this.coroutinesRunThisFrame = false;
+            this.currentFrameContext = undefined;
         } catch (err) {
             this._running = false;
-            console.error("To prevent overloading the browser with error logs, rendering has been stopped because of:", err);
+            console.error("To prevent overloading the browser with error logs, rendering has been stopped because of:\n", err);
         }
     }
 
@@ -1529,6 +1725,13 @@ export default class InteractiveCanvas implements Canvas {
     private scheduleCursorUpdate(frames: number) {
         if (!this.cursorUpdateSchedule) this.cursorUpdateSchedule = frames + 1;
         else this.cursorUpdateSchedule = Math.min(this.cursorUpdateSchedule, frames + 1);
+    }
+
+    private handleCoroutines() {
+        if (!this.currentFrameContext) throw new Error("The coroutine handler was called outside of the frame loop");
+        if (this.coroutinesRunThisFrame) throw new Error("The coroutine handler was called twice in one frame");
+        this.coroutinesRunThisFrame = true;
+        if (!this.pauseCoroutines) this._coroutineManager.frame(this.currentFrameContext);
     }
 }
 

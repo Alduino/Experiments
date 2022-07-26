@@ -201,6 +201,10 @@ export default class Vector2 {
         return (this.x * b.x) - (this.y * b.y);
     }
 
+    distanceSquared(b: Vector2) {
+        return this.subtract(b).lengthSquared();
+    }
+
     distance(b: Vector2) {
         return this.subtract(b).length();
     }
@@ -266,6 +270,14 @@ export default class Vector2 {
             Math.round(this.x),
             Math.round(this.y)
         );
+    }
+
+    tangent(alternateDirection = false) {
+        if (alternateDirection) {
+            return new Vector2(this.y, -this.x);
+        } else {
+            return new Vector2(-this.y, this.x);
+        }
     }
 
     #assertNotNav() {

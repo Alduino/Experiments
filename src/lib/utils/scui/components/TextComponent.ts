@@ -40,6 +40,12 @@ export default class TextComponent extends Component {
         this.#fill.set(value);
     }
 
+    static createWithText(text: string) {
+        const component = new TextComponent();
+        component.text = text;
+        return component;
+    }
+
     protected getChildLimit(): number {
         return 0;
     }
