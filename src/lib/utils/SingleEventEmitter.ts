@@ -1,4 +1,5 @@
 import Batch from "./Batch";
+import {JobScheduler, Priority} from "./JobScheduler";
 
 type EventHandler<Args extends unknown[]> = (...args: Args) => void;
 
@@ -12,7 +13,9 @@ export interface SingleEventListener<Args extends unknown[]> {
 export default class SingleEventEmitter<Args extends unknown[] = []> implements SingleEventListener<Args> {
     readonly #handlers = new Set<EventHandler<Args>>();
     readonly #marker = Symbol();
+    #lastArgs: Args | null = null;
     #batch: Batch | null = null;
+    #jobScheduler: JobScheduler | null = null;
 
     getListener(): SingleEventListener<Args> {
         return this;
@@ -24,10 +27,14 @@ export default class SingleEventEmitter<Args extends unknown[] = []> implements 
     }
 
     emit(...args: Args) {
-        if (this.#batch) {
-            this.#batch.add(this.#marker, this.#runHandlers.bind(this, args));
+        this.#lastArgs = args;
+
+        if (this.#jobScheduler) {
+            this.#jobScheduler.schedule(this.#marker);
+        } else if (this.#batch) {
+            this.#batch.add(this.#marker, this.#runHandlers.bind(this));
         } else {
-            this.#runHandlers(args);
+            this.#runHandlers();
         }
     }
 
@@ -35,7 +42,16 @@ export default class SingleEventEmitter<Args extends unknown[] = []> implements 
         this.#batch = batch;
     }
 
-    #runHandlers(args: Args) {
-        this.#handlers.forEach(handler => handler(...args));
+    enableJobScheduling(scheduler: JobScheduler, priority: Priority) {
+        this.#jobScheduler = scheduler;
+
+        scheduler.register(this.#marker, {
+            priority,
+            fn: this.#runHandlers.bind(this)
+        });
+    }
+
+    #runHandlers() {
+        this.#handlers.forEach(handler => handler(...this.#lastArgs));
     }
 }

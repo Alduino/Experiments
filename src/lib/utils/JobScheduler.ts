@@ -140,6 +140,7 @@ export class JobScheduler {
             if (lastScheduledTime && lastScheduledTime > cutoff) continue;
 
             set.delete(job);
+            this.#lastScheduleTimes.delete(job);
 
             const {fn} = this.#jobs.get(job);
 
