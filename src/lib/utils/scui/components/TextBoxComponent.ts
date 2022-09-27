@@ -806,6 +806,7 @@ class TextBoxEditorComponent extends Component {
                 function deleteSelectedText() {
                     const caretIdx = getCaretIndex();
                     const selectionEnd = getSelectionEnd();
+                    if (selectionEnd === null) return;
 
                     const min = Math.min(caretIdx, selectionEnd);
                     const max = Math.max(caretIdx, selectionEnd);
@@ -934,6 +935,36 @@ class TextBoxEditorComponent extends Component {
                 } else if (getControlModifier() && code === "KeyA") {
                     setCaretIndex(0);
                     setSelectionEnd(getText().length);
+                } else if (getControlModifier() && (code === "KeyC" || code === "KeyX")) {
+                    const caretIdx = getCaretIndex();
+                    const selectionEnd = getSelectionEnd();
+
+                    const min = Math.min(caretIdx, selectionEnd);
+                    const max = Math.max(caretIdx, selectionEnd);
+
+                    const selectedText = getText().substring(min, max);
+                    navigator.clipboard.writeText(selectedText);
+
+                    if (code === "KeyX") deleteSelectedText();
+                } else if (getControlModifier() && code === "KeyV") {
+                    // TODO: disable while pasting
+
+                    if (navigator.clipboard.readText) {
+                        navigator.clipboard.readText().then(clipboardText => {
+                            deleteSelectedText();
+
+                            const caretIdx = getCaretIndex();
+                            const text = getText();
+
+                            const beforeText = text.substring(0, caretIdx);
+                            const afterText = text.substring(caretIdx);
+
+                            setText(beforeText + clipboardText + afterText);
+                            setCaretIndex(caretIdx + clipboardText.length);
+                        });
+                    } else {
+                        console.warn("clipboard.readText is disabled. In Firefox, you can enable it by setting `dom.events.testing.asyncClipboard` in about:config.");
+                    }
                 } else if (!CONTROL_MODIFIER_KEYS.includes(code) && !IGNORED_KEYS.includes(key)) {
                     if (getSelectionEnd() !== null) {
                         deleteSelectedText();
