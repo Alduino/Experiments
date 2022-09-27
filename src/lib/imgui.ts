@@ -149,18 +149,36 @@ export function rect(ctx: CanvasFrameContext, a: Vector2, b: Vector2, opts: Rend
     drawPath(ctx, opts);
 }
 
-export function roundedRectangle(ctx: CanvasFrameContext, a: Vector2, b: Vector2, radius: number, opts: RenderOptions) {
+export interface RectangleRadii {
+    topLeft: number;
+    topRight: number;
+    bottomLeft: number;
+    bottomRight: number;
+}
+
+export function roundedRectangle(ctx: CanvasFrameContext, a: Vector2, b: Vector2, radius: number | RectangleRadii, opts: RenderOptions) {
     beginPath(ctx);
 
     const size = a.subtract(b).abs();
-    const clampedRadius = Math.min(size.x / 2, size.y / 2, radius);
+
+    const radii: RectangleRadii = typeof radius === "number" ? {
+        topLeft: radius,
+        topRight: radius,
+        bottomLeft: radius,
+        bottomRight: radius
+    } : radius;
+
+    const topLeftClampedRadius = Math.min(size.x / 2, size.y / 2, radii.topLeft);
+    const topRightClampedRadius = Math.min(size.x / 2, size.y / 2, radii.topRight);
+    const bottomLeftClampedRadius = Math.min(size.x / 2, size.y / 2, radii.bottomLeft);
+    const bottomRightClampedRadius = Math.min(size.x / 2, size.y / 2, radii.bottomRight);
 
     // https://stackoverflow.com/a/7838871
-    ctx.renderer.moveTo(a.x + clampedRadius, a.y);
-    ctx.renderer.arcTo(b.x, a.y, b.x, b.y, clampedRadius);
-    ctx.renderer.arcTo(b.x, b.y, a.x, b.y, clampedRadius);
-    ctx.renderer.arcTo(a.x, b.y, a.x, a.y, clampedRadius);
-    ctx.renderer.arcTo(a.x, a.y, b.x, a.y, clampedRadius);
+    ctx.renderer.moveTo(a.x + topLeftClampedRadius, a.y);
+    ctx.renderer.arcTo(b.x, a.y, b.x, b.y, topRightClampedRadius);
+    ctx.renderer.arcTo(b.x, b.y, a.x, b.y, bottomRightClampedRadius);
+    ctx.renderer.arcTo(a.x, b.y, a.x, a.y, bottomLeftClampedRadius);
+    ctx.renderer.arcTo(a.x, a.y, b.x, a.y, topLeftClampedRadius);
 
     drawPath(ctx, opts);
 }
@@ -177,6 +195,7 @@ export function arc(ctx: CanvasFrameContext, centre: Vector2, radius: number, st
 }
 
 export function measureText(ctx: CanvasFrameContext, text: string, opts: Omit<TextOptions, "align">) {
+    ctx.renderer.textBaseline = "top";
     ctx.renderer.font = opts.font;
     return ctx.renderer.measureText(text);
 }
@@ -255,6 +274,17 @@ export function path(ctx: CanvasFrameContext, draw: PathDrawer) {
     }
 
     iCtx.inPath = wasInPath;
+}
+
+export function translate(ctx: CanvasFrameContext, translation: Vector2, draw: () => void) {
+    if (translation.x === 0 && translation.y === 0) {
+        return draw();
+    }
+
+    ctx.renderer.save();
+    ctx.renderer.translate(translation.x, translation.y);
+    draw();
+    ctx.renderer.restore();
 }
 
 export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {

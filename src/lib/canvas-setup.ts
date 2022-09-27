@@ -1,7 +1,8 @@
 import Vector2 from "./Vector2";
 import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
 import {getListenerAdder, MiniEventEmitter} from "./utils/MiniEventEmitter";
-import {deref, Dereffable} from "./utils/ref";
+import {deref, Dereffable, Getter} from "./utils/ref";
+import iter from "itiriri";
 
 type CanvasFrameRenderer = (ctx: InteractiveCanvasFrameContext) => void;
 
@@ -33,10 +34,15 @@ class MouseState {
     }
 }
 
-class KeyState {
-    private readonly _keys: { [key: string]: boolean } = {};
+interface KeyStateValue {
+    state: boolean;
+    keyValue: string;
+}
 
-    static fromEntries(entries: [string, boolean][]): KeyState {
+class KeyState {
+    private readonly _keys: { [key: string]: KeyStateValue } = {};
+
+    static fromEntries(entries: [string, KeyStateValue][]): KeyState {
         const newState = new KeyState();
 
         for (const [key, state] of entries) {
@@ -46,27 +52,32 @@ class KeyState {
         return newState;
     }
 
-    with(key: string, state: boolean) {
+    with(key: string, state: boolean, keyValue: string) {
         const newState = this.clone();
-        newState._keys[key] = state;
+        newState._keys[key] = {state, keyValue};
         return newState;
     }
 
     get(key: string) {
-        return this._keys[key] || false;
+        return this._keys[key]?.state || false;
     }
 
-    entries(): [string, boolean][] {
+    getKeyValue(key: string): string | null {
+        if (this.get(key)) return this._keys[key].keyValue;
+        return null;
+    }
+
+    entries(): [string, KeyStateValue][] {
         return Object.entries(this._keys);
     }
 
     getActive(): string[] {
-        return this.entries().filter(v => v[1]).map(v => v[0]);
+        return this.entries().filter(v => v[1].state).map(v => v[0]);
     }
 
     private clone() {
         const newState = new KeyState();
-        Object.assign(newState._keys, this._keys);
+        Object.assign(newState._keys, Object.fromEntries(Object.entries(this._keys)));
         return newState;
     }
 }
@@ -221,14 +232,14 @@ class InteractiveCanvasFrameContextFactory {
     private static risingEdgeKeys(curr: KeyState, prev: KeyState): KeyState {
         return KeyState.fromEntries(
             curr.entries()
-                .map(([key, state]) => [key, state && !prev.get(key)])
+                .map(([key, {state, keyValue}]) => [key, {state: state && !prev.get(key), keyValue}])
         );
     }
 
     private static fallingEdgeKeys(curr: KeyState, prev: KeyState): KeyState {
         return KeyState.fromEntries(
             curr.entries()
-                .map(([key, state]) => [key, !state && prev.get(key)])
+                .map(([key, {state, keyValue}]) => [key, {state: !state && prev.get(key), keyValue}])
         );
     }
 
@@ -324,7 +335,7 @@ class InteractiveCanvasFrameContextFactory {
     }
 
     private handleKeyChange(state: boolean, ev: KeyboardEvent) {
-        this._keyState = this._keyState.with(ev.key, state);
+        this._keyState = this._keyState.with(ev.code, state, ev.key);
     }
 }
 
@@ -567,6 +578,27 @@ export interface MouseExitedOptions extends CommonAwaiterOptions {
     minDistance?: number;
 }
 
+export interface MousePressedOptions extends CommonAwaiterOptions {
+    /**
+     * When set, only returns if user presses the mouse while it's inside the collider.
+     */
+    collider?: Collider | Getter<Collider>;
+
+    /**
+     * When true, only returns if the user presses the mouse while it's _outside_ the collider, instead of inside it.
+     *
+     * Requries the `collider` option.
+     */
+    invertCollider?: boolean;
+}
+
+export interface AnyKeyPressedOptions extends CommonAwaiterOptions {
+    /**
+     * A list of keys to ignore
+     */
+    ignore?: readonly string[];
+}
+
 /**
  * Various coroutine awaiters
  *
@@ -725,13 +757,37 @@ export const waitUntil = {
     /**
      * Waits until the left mouse button is pressed
      */
-    leftMousePressed(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+    leftMousePressed(options: MousePressedOptions = {}): CoroutineAwait<void> {
+        const {collider: colliderRef, invertCollider, ...commonOptions} = options;
+
+        if (invertCollider && !colliderRef) {
+            throw new Error("`invertCollider` option requires `collider` to be set");
+        }
+
         return {
-            ...options,
+            ...commonOptions,
             identifier: "waitUntil.leftMousePressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
-                return {state: ctx.mousePressed.left};
+
+                if (!colliderRef) {
+                    return {state: ctx.mousePressed.left};
+                }
+
+                if (ctx.mousePressed.left) {
+                    const collider = deref(colliderRef);
+                    const distance = collider.getSignedDistance(ctx.mousePos);
+
+                    if (!invertCollider && distance <= 0) {
+                        return {state: true};
+                    } else if (invertCollider && distance > 0) {
+                        return {state: true};
+                    } else {
+                        return {state: false};
+                    }
+                } else {
+                    return {state: false};
+                }
             }
         };
     },
@@ -767,13 +823,37 @@ export const waitUntil = {
     /**
      * Waits until the specified key is pressed
      */
-    keyPressed(key: string, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+    keyPressed(key: string | string[], options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+        const keys = Array.isArray(key) ? key : [key];
+
         return {
             ...options,
             identifier: "waitUntil.keyPressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
-                return {state: ctx.keyPressed.get(key)};
+                return {state: keys.some(key => ctx.keyPressed.get(key))};
+            }
+        };
+    },
+
+    /**
+     * Waits until the specified key is pressed
+     */
+    anyKeyPressed(options: AnyKeyPressedOptions = {}): CoroutineAwait<string> {
+        const {ignore, ...awaiterOptions} = options;
+
+        return {
+            ...awaiterOptions,
+            identifier: "waitUntil.keyPressed",
+            shouldContinue(ctx: InteractiveCanvasFrameContext) {
+                const lastUsedKeyPressed = iter(ctx.keyPressed.getActive())
+                    .findLast(key => !ignore || !ignore.includes(key));
+
+                if (lastUsedKeyPressed) {
+                    return {state: true, data: lastUsedKeyPressed}
+                } else {
+                    return {state: false};
+                }
             }
         };
     },
@@ -781,13 +861,15 @@ export const waitUntil = {
     /**
      * Waits until the specified key is released
      */
-    keyReleased(key: string, options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+    keyReleased(key: string | string[], options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+        const keys = Array.isArray(key) ? key : [key];
+
         return {
             ...options,
             identifier: "waitUntil.keyReleased",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
-                return {state: ctx.keyReleased.get(key)};
+                return {state: keys.some(key => ctx.keyReleased.get(key))};
             }
         };
     },
@@ -953,7 +1035,24 @@ function isStartCoroutineResult(test: unknown): test is StartCoroutineResult {
 const disposeFunctionMarker = Symbol("exotic:hookDispose()");
 const defaultOptionsMarker = Symbol("exotic:hookOptions()");
 
+const focusTargetOptionsKey = Symbol("options");
+
+export interface FocusTargetOptions {
+    /**
+     * A human-readable name for the focus target for debugging.
+     */
+    displayName?: string;
+
+    /**
+     * Requires the focus target to actually be focused before allowing coroutines to run,
+     * instead of the default behaviour of also allowing them to run when nothing is focused.
+     */
+    require?: boolean;
+}
+
 export interface FocusTarget {
+    [focusTargetOptionsKey]: FocusTargetOptions;
+
     /**
      * Activates this focus target, allowing its coroutines to run.
      * Deactivates every other focus target.
@@ -1015,7 +1114,7 @@ export interface CoroutineManager {
      * Calling `.blur()` stops the target being active.
      * Until you activate another focus target, every awaiter can run.
      */
-    createFocusTarget(): FocusTarget;
+    createFocusTarget(options?: FocusTargetOptions): FocusTarget;
 
     /**
      * Creates a focus target that is active when any one of the passed sources are active.
@@ -1023,6 +1122,11 @@ export interface CoroutineManager {
      * @remarks Calling `.focus()` on the result throws an error, as that method doesn't make senses here.
      */
     createCombinedFocusTarget(...sources: readonly FocusTarget[]): FocusTarget;
+
+    /**
+     * Returns true when no focus targets are focused.
+     */
+    isFocusGlobal(): boolean;
 
     /**
      * The callback supplied to this function will be called when the coroutine is about to be disposed.
@@ -1042,10 +1146,11 @@ class FocusTargetManager {
     #combinedFocusTargets = new WeakMap<FocusTarget, readonly FocusTarget[]>();
     #currentFocusTarget: FocusTarget | null = null;
 
-    createFocusTarget(): FocusTarget {
+    createFocusTarget(options: FocusTargetOptions = {}): FocusTarget {
         const target: FocusTarget = {
             focus: () => this.#focus(target),
-            blur: () => this.#blur(target)
+            blur: () => this.#blur(target),
+            [focusTargetOptionsKey]: options
         };
 
         return target;
@@ -1056,7 +1161,8 @@ class FocusTargetManager {
             focus() {
                 throw new Error("Cannot focus a combined focus target");
             },
-            blur: () => this.#blur(target)
+            blur: () => this.#blur(target),
+            [focusTargetOptionsKey]: {}
         };
 
         this.#combinedFocusTargets.set(target, sources);
@@ -1065,12 +1171,25 @@ class FocusTargetManager {
     }
 
     isFocused(target: FocusTarget) {
-        if (this.#currentFocusTarget === null) return true;
-
         const combined = this.#combinedFocusTargets.get(target);
 
-        if (combined) return combined.some(target => this.isFocused(target));
-        else return target === this.#currentFocusTarget;
+        if (combined) {
+            return combined.some(target => this.isFocused(target));
+        } else {
+            const options = target[focusTargetOptionsKey];
+
+            if (!options.require && this.#currentFocusTarget === null) return true;
+            return this.#currentFocusTarget === target;
+        }
+    }
+
+    getActiveFocusTargetDisplayName(): null | undefined | string {
+        if (this.#currentFocusTarget === null) return null;
+        return this.#currentFocusTarget[focusTargetOptionsKey].displayName;
+    }
+
+    hasActiveFocusTarget() {
+        return !!this.#currentFocusTarget;
     }
 
     #focus(target: FocusTarget) {
@@ -1142,6 +1261,14 @@ class CoroutineManagerImpl implements CoroutineManager {
         return this.disposalCount;
     }
 
+    get currentFocusTargetDisplayName() {
+        return this.#focusTargetManager.getActiveFocusTargetDisplayName();
+    }
+
+    isFocusGlobal() {
+        return !this.#focusTargetManager.hasActiveFocusTarget();
+    }
+
     getLastCheckCount() {
         return this.lastCheckCount;
     }
@@ -1183,10 +1310,6 @@ class CoroutineManagerImpl implements CoroutineManager {
 
         this._coroutines.add(state);
 
-        if (process.env.NODE_ENV !== "production") {
-            console.debug("Beginning coroutine", `"${identifier}"`);
-        }
-
         const that = this;
         const awaiter: StartCoroutineAwait = {
             identifier,
@@ -1224,8 +1347,8 @@ class CoroutineManagerImpl implements CoroutineManager {
         };
     }
 
-    public createFocusTarget() {
-        return this.#focusTargetManager.createFocusTarget();
+    public createFocusTarget(options?: FocusTargetOptions) {
+        return this.#focusTargetManager.createFocusTarget(options);
     }
 
     public createCombinedFocusTarget(...sources): FocusTarget {
@@ -1257,10 +1380,6 @@ class CoroutineManagerImpl implements CoroutineManager {
 
         state.disposeHandlers.forEach(handler => handler());
         this.disposalCount += state.disposeHandlers.size;
-
-        if (process.env.NODE_ENV !== "production") {
-            console.debug("Coroutine", `"${state.identifier}"`, "has finished running");
-        }
 
         state.coroutine.return();
         this._coroutines.delete(state);
@@ -1538,7 +1657,7 @@ export default class InteractiveCanvas implements Canvas {
     }
 
     public preventKeyDefault(key: string, prevent: boolean) {
-        this._defaultKeysPrevented = this._defaultKeysPrevented.with(key, prevent);
+        this._defaultKeysPrevented = this._defaultKeysPrevented.with(key, prevent, null);
     }
 
     public getCoroutineManager(): CoroutineManager {
@@ -1554,7 +1673,10 @@ export default class InteractiveCanvas implements Canvas {
             _SC: this._coroutineManager.getLastCheckCount().toFixed(0),
             DW: this._coroutineManager.waitingDisposalCount.toFixed(0),
             _DF: this._coroutineManager.thisFrameDisposalCount.toFixed(0),
-            CN: this._coroutineManager.identifiers.join(", ")
+            CN: this._coroutineManager.identifiers.join(", "),
+            FT: this._coroutineManager.currentFocusTargetDisplayName === null
+                ? "N/A"
+                : (this._coroutineManager.currentFocusTargetDisplayName || "Unnamed")
         });
     }
 
@@ -1654,6 +1776,16 @@ export default class InteractiveCanvas implements Canvas {
         } catch (err) {
             this._running = false;
             console.error("To prevent overloading the browser with error logs, rendering has been stopped because of:\n", err);
+
+            const displayMessage = "An error occurred, please check the console.";
+
+            this._contextFactory.ctx.font = "32px sans-serif";
+
+            this._contextFactory.ctx.fillStyle = "#700";
+            this._contextFactory.ctx.fillRect(30, this.size.y - 82, this._contextFactory.ctx.measureText(displayMessage).width + 20, 52);
+
+            this._contextFactory.ctx.fillStyle = "white";
+            this._contextFactory.ctx.fillText(displayMessage, 40, this.size.y - 72);
         }
     }
 

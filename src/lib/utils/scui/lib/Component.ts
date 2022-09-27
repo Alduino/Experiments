@@ -1,7 +1,7 @@
 import {CanvasFrameContext, OffscreenCanvas} from "../../../canvas-setup";
 import Vector2 from "../../../Vector2";
 import SizeRequest from "./SizeRequest";
-import SingleEventEmitter from "../../SingleEventEmitter";
+import SingleEventEmitter, {SingleEventListener} from "../../SingleEventEmitter";
 import {deref, ref, Reference} from "../../ref";
 import Association from "../Association";
 import ParentInterface from "./ParentInterface";
@@ -58,6 +58,10 @@ export interface RootChildInterface {
     getFullDisplayName(): string;
 }
 
+export interface LinkedReference<T> extends Reference<T> {
+    changedEvent: SingleEventListener<[T]>;
+}
+
 export type CompareFn<in T> = (a: T, b: T) => boolean;
 export type GetInitialMetadataFn<out T> = () => T;
 export type ChildrenMetadataMap<T> = ReadonlyMap<symbol, T>;
@@ -89,6 +93,7 @@ export default abstract class Component {
     readonly #transformUpdateEvent = new SingleEventEmitter();
     readonly #globalPositionUpdatedEvent = new SingleEventEmitter();
     readonly #userGlobalPositionUpdatedEvent = new SingleEventEmitter<[position: Vector2]>();
+    readonly #initialisingEvent = new SingleEventEmitter();
     readonly #initialisedEvent = new SingleEventEmitter();
     readonly #resizedEvent = new SingleEventEmitter();
     readonly #childPositionsUpdateEvent = new SingleEventEmitter();
@@ -126,7 +131,7 @@ export default abstract class Component {
 
     /**
      * The current size of this component.
-     * @remarks This value may change when you batched updates or when something updates this component's transform.
+     * @remarks This value may change when you run batched updates or when something updates this component's transform.
      */
     get size() {
         return this.#size.get();
@@ -151,12 +156,33 @@ export default abstract class Component {
         return this.#userGlobalPositionUpdatedEvent.getListener();
     }
 
+    /**
+     * Called during the initialisation process, just before the children are initialised.
+     * If you need to set up children on init, do it in this event.
+     *
+     * Initialisation happens either when this component or a parent is connected to the root component,
+     * or when adding this component as a child to a component that has already been initialised.
+     */
+    protected get initialisingEvent() {
+        return this.#initialisingEvent.getListener();
+    }
+
+    /**
+     * Called after the component has been initialised.
+     *
+     * Initialisation happens either when this component or a parent is connected to the root component,
+     * or when adding this component as a child to a component that has already been initialised.
+     */
     protected get initialisedEvent() {
         return this.#initialisedEvent.getListener();
     }
 
     protected get resizedEvent() {
         return this.#resizedEvent.getListener();
+    }
+
+    protected get isInitialised() {
+        return this.#initialised;
     }
 
     /**
@@ -245,11 +271,24 @@ export default abstract class Component {
         return this.#globalPosition.get();
     }
 
-    protected createLinkedReference<T>(initialValue: T, options: Partial<UpdateDependencyOptions<T>> = {}): Reference<T> {
+    /**
+     * Schedules an update to be run at the next batch handler.
+     * The update function is provided with the canvas context.
+     */
+    protected scheduleUpdateWithContext(distinctness: symbol, handler: (context: CanvasFrameContext) => void) {
+        this.#getBatch().add(distinctness, () => {
+            const context = this.#canvas.getContext();
+            handler(context);
+        });
+    }
+
+    protected createLinkedReference<T>(initialValue: T, options: Partial<UpdateDependencyOptions<T>> = {}): LinkedReference<T> {
         const {
             checkEquality = defaultCompareFn,
             triggers = {}
         } = options;
+
+        const changedEvent = new SingleEventEmitter<[T]>();
 
         let value = initialValue;
 
@@ -262,10 +301,19 @@ export default abstract class Component {
                 value = newValue;
 
                 this.#emitTriggerEvents(triggers);
-            }
+                changedEvent.emit(newValue);
+            },
+            changedEvent: changedEvent.getListener()
         };
     }
 
+    /**
+     * A piece of metadata stored per-child.
+     * The values aren't monitored for changes.
+     *
+     * @param getInitialMetadata Called when something adds a new child.
+     * The result is then used as that child's metadata.
+     */
     protected createChildrenMetadata<T>(getInitialMetadata: GetInitialMetadataFn<T>): ChildrenMetadataMap<T> {
         const map = new Map<symbol, T>();
 
@@ -341,14 +389,14 @@ export default abstract class Component {
      * Gets the size of each child. Must be implemented if the component supports children.
      */
     protected getChildrenSizes(): ReadonlyMap<symbol, Vector2> {
-        throw new Error(`${this.constructor.name} requires, but is missing, an implementation of \`getChildrenSizes\``);
+        throw new Error(`${this.getComponentName()} requires, but is missing, an implementation of \`getChildrenSizes\``);
     }
 
     /**
      * Gets the position of the child inside this component. Must be implemented if the component supports children.
      */
     protected getChildPosition(identifier: symbol): Vector2 {
-        throw new Error(`${this.constructor.name} requires, but is missing, an implementation of \`getChildPosition\``);
+        throw new Error(`${this.getComponentName()} requires, but is missing, an implementation of \`getChildPosition\``);
     }
 
     /**
@@ -376,6 +424,8 @@ export default abstract class Component {
         this.#childResizedEvent.enableBatching(batch);
         this.#globalPositionUpdatedEvent.enableBatching(batch);
         this.#childPositionsUpdateEvent.enableBatching(batch);
+
+        this.#initialisingEvent.emit();
 
         for (const child of this.#childrenNeedingInitialisation) {
             this.#initialiseChild(child);

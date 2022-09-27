@@ -14,7 +14,7 @@ export default class AbsoluteComponent extends Component {
 
     setChildPosition(child: Component, position: Vector2) {
         const childIdentifier = this.getChildComponentIdentifier(child);
-        this.#childrenPositions.get(childIdentifier).set(position);
+        this.#childrenPositions.get(childIdentifier).set(position.round());
     }
 
     protected render(ctx: CanvasFrameContext) {
@@ -47,6 +47,11 @@ export default class AbsoluteComponent extends Component {
 
         return iter(children).map<[symbol, Vector2]>(child => {
             const position = this.#childrenPositions.get(child).get();
+
+            if (position.isNaV) {
+                throw new Error(`Position has not been set for child \`${child.description}\``);
+            }
+
             const {minSize, requestedSize} = this.getChildSizeRequest(child);
             if (!requestedSize) return [child, minSize];
 

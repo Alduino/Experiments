@@ -61,7 +61,7 @@ export default class TextComponent extends Component {
     }
 
     protected getSizeRequest(ctx: CanvasFrameContext): SizeRequest {
-        const textSize = measureText(ctx, this.text, {
+        const textSize = measureText(ctx, this.text || "o", {
             font: this.font
         });
 

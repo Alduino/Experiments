@@ -150,6 +150,9 @@ export default class Vector2 {
     }
 
     subtract(from: Vector2) {
+        this.#assertNotNav("this");
+        from.#assertNotNav("from");
+
         return new Vector2(this.x - from.x, this.y - from.y);
     }
 
@@ -280,7 +283,12 @@ export default class Vector2 {
         }
     }
 
-    #assertNotNav() {
-        if (this.isNaV) throw new Error("Cannot operate on a NaV");
+    #assertNotNav(paramName?: string) {
+        const baseMessage = "Cannot operate on a NaV";
+
+        if (this.isNaV) {
+            const message = paramName ? `${baseMessage} (\`${paramName}\` parameter)` : baseMessage;
+            throw new Error(message);
+        }
     }
 }
