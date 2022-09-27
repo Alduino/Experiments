@@ -1221,6 +1221,12 @@ interface StatefulCoroutine {
 
 export type CoroutineGeneratorFunction = (signal: AbortSignal) => CoroutineGenerator;
 
+function generateHash() {
+    const dataArray = new Uint8Array(3);
+    crypto.getRandomValues(dataArray);
+    return Array.from(dataArray).map(el => el.toString(16).padStart(2, "0")).join("");
+}
+
 function getCoroutineName(baseName: string) {
     if (/handle[A-Z]/.test(baseName)) {
         const name = baseName.substring("handle".length);
@@ -1232,7 +1238,6 @@ function getCoroutineName(baseName: string) {
 
 class CoroutineManagerImpl implements CoroutineManager {
     private readonly _coroutines = new Set<StatefulCoroutine>();
-    private incr = 0;
     private checkCount = 0;
     private lastCheckCount = 0;
     private disposalCount = 0;
@@ -1285,7 +1290,7 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 
     startCoroutine(identifier_fn: string | CoroutineGeneratorFunction, fn_opt?: CoroutineGeneratorFunction): StartCoroutineResult {
-        const identifier = typeof identifier_fn === "string" ? identifier_fn : getCoroutineName(identifier_fn.name) || `unq_${++this.incr}`;
+        const identifier = typeof identifier_fn === "string" ? identifier_fn : getCoroutineName(identifier_fn.name) || `CR_${generateHash()}`;
         const fn = typeof identifier_fn === "function" ? identifier_fn : fn_opt;
 
         let isComplete = false;
