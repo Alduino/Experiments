@@ -5,6 +5,7 @@ import Vector2 from "../../../Vector2";
 
 export default class RootComponent {
     #batch = new Batch();
+    #maxSize = Vector2.notAVector;
     #childInterface: RootChildInterface;
 
     /**
@@ -27,11 +28,16 @@ export default class RootComponent {
                 lastChildSizeRequest = newSizeRequest;
 
                 this.#batch.add(updateChildSizeRequestKey, () => {
-                    this.#childInterface.setChildSize(lastChildSizeRequest.requestedSize ?? lastChildSizeRequest.minSize);
+                    const requestedSize = lastChildSizeRequest.requestedSize &&
+                        Vector2.min(lastChildSizeRequest.requestedSize, this.#maxSize);
+                    this.#childInterface.setChildSize(requestedSize ?? lastChildSizeRequest.minSize);
                 });
             },
             getChildName: () => {
-                return `${this.#childInterface.getFullDisplayName()} (root)`;
+                return `1.${this.#childInterface.getFullDisplayName()}`;
+            },
+            getPath() {
+                return "~";
             }
         });
     }
@@ -63,6 +69,10 @@ export default class RootComponent {
     }
 
     setSize(size: Vector2) {
-        this.#childInterface.setChildSize(size);
+        this.#maxSize = size;
+
+        if (this.#childInterface) {
+            this.#childInterface.setChildSize(size);
+        }
     }
 }

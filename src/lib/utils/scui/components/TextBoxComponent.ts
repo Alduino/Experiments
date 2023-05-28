@@ -19,6 +19,7 @@ import SingleEventEmitter from "../../SingleEventEmitter";
 import {Font, Glyph, GlyphRun} from "fontkit";
 import {getDefaultFont} from "../../font";
 import iter from "itiriri";
+import createContextMenu, {CreateContextMenuResult} from "../utils/createContextMenu";
 
 const WORD_BOUNDARY_REGEX = /\b(?=\S+)/g;
 
@@ -125,7 +126,9 @@ function createKeyPressedRepeating(abortedRef: Setter<boolean>, keyRef: Referenc
 }
 
 interface EditorInterface {
-    collider: Getter<Collider>;
+    readonly collider: Getter<Collider>;
+
+    readonly focusTarget: FocusTarget;
 
     setFocusState(focused: boolean): void;
 }
@@ -581,6 +584,10 @@ const IGNORED_KEYS = [
     ...Array.from({length: 24}).map((_, idx) => "F" + (idx + 1))
 ];
 
+interface TextBoxEditorComponentOptions {
+    focusTarget: FocusTarget;
+}
+
 class TextBoxEditorComponent extends Component {
     readonly #editorInterface: EditorInterface;
     readonly #absoluteComponent: AbsoluteComponent;
@@ -631,8 +638,7 @@ class TextBoxEditorComponent extends Component {
 
         this.#canvas = canvas;
         this.#coroutineManager = canvas.getCoroutineManager();
-
-        this.#focusTarget = this.#coroutineManager.createFocusTarget({require: true, displayName: "TextBoxEditor"});
+        this.#focusTarget = editorInterface.focusTarget;
 
         this.#focusChangedEvent.listen(focused => this.#handleFocusChanged(focused));
         this.#caretPosition.changedEvent.listen(() => this.#handleCaretPositionChanged());
@@ -1153,6 +1159,8 @@ export default class TextBoxComponent extends Component {
     readonly #paddingBottom = this.createLinkedReference(6);
     readonly #width = this.createLinkedReference(300);
 
+    readonly #contextMenu: CreateContextMenuResult;
+
     readonly #focused = this.createLinkedReference(false, {
         triggers: {
             resize: false,
@@ -1165,15 +1173,21 @@ export default class TextBoxComponent extends Component {
 
     readonly #collider = ref(new RectangleCollider(Vector2.zero, Vector2.zero));
 
+    readonly #focusTarget: FocusTarget;
+
     #isInitialised = false;
     #addEditorOnInit = true;
 
-    constructor(canvas: InteractiveCanvas) {
+    constructor(canvas: InteractiveCanvas, rootAbsolute: AbsoluteComponent) {
         super();
         this.#canvas = canvas;
 
+        this.#focusTarget = canvas.getCoroutineManager().createFocusTarget({require: true, displayName: "TextBox"});
+
+        this.#contextMenu = this.#createContextMenu();
+
         this.initialisingEvent.listen(() => this.#handleInitialising());
-        this.initialisedEvent.listen(() => this.#handleInitialised());
+        this.initialisedEvent.listen(() => this.#handleInitialised(rootAbsolute));
         this.globalPositionUpdatedEvent.listen(() => this.#updateCollider());
         this.resizedEvent.listen(() => this.#updateCollider())
     }
@@ -1231,7 +1245,7 @@ export default class TextBoxComponent extends Component {
     /**
      * Disables automatically setting the child to be the editor.
      * After calling this method, you must set the child yourself.
-     * Note that you must put the return value of `getEditorComponent()` somewhere in the subtree.
+     * Note that you must put the return value of `createEditorComponent()` somewhere in the subtree.
      *
      * Usually, you set the children to a `FlexComponent`,
      * which can contain an icon at the start or end, and the editor in the middle.
@@ -1286,7 +1300,7 @@ export default class TextBoxComponent extends Component {
 
     protected getChildrenSizes(): ReadonlyMap<symbol, Vector2> {
         const child = this.getOnlyChild();
-        const size = this.getSize().subtract(this.#getInnerSizeDiff());
+        const size = this.size.subtract(this.#getInnerSizeDiff());
 
         const map = new Map<symbol, Vector2>();
 
@@ -1313,10 +1327,6 @@ export default class TextBoxComponent extends Component {
         return vecOf2.add(totalPadding);
     }
 
-    #handleInitialised() {
-        this.#isInitialised = true;
-    }
-
     #handleInitialising() {
         if (this.#addEditorOnInit) {
             const editor = this.createEditorComponent();
@@ -1324,16 +1334,59 @@ export default class TextBoxComponent extends Component {
         }
     }
 
+    #handleInitialised(rootAbsolute: AbsoluteComponent) {
+        this.#isInitialised = true;
+
+        setTimeout(() => {
+            rootAbsolute.addChild(this.#contextMenu.component);
+            rootAbsolute.setChildPosition(this.#contextMenu.component, Vector2.zero);
+            rootAbsolute.forceTransformUpdate();
+
+            this.#startContextMenuCoroutine();
+        }, 1);
+    }
+
     #createEditorInterface(): EditorInterface {
         return {
             collider: this.#collider,
+            focusTarget: this.#focusTarget,
             setFocusState: focused => this.#focused.set(focused)
         };
     }
 
     #updateCollider() {
-        if (this.getGlobalPosition().isNaV || this.getSize().isNaV) return;
-        const collider = new RectangleCollider(this.getGlobalPosition(), this.getGlobalPosition().add(this.getSize()));
+        if (this.getGlobalPosition().isNaV || this.size.isNaV) return;
+        const collider = new RectangleCollider(this.getGlobalPosition(), this.getGlobalPosition().add(this.size));
         this.#collider.set(collider);
+    }
+
+    #createContextMenu() {
+        return createContextMenu(this.#canvas, {
+            options: [
+                {
+                    id: "copy",
+                    title: "Copy",
+                    disabled: false
+                }
+            ]
+        });
+    }
+
+    #startContextMenuCoroutine() {
+        const cm = this.#canvas.getCoroutineManager();
+        const contextMenu = this.#contextMenu;
+        const collider = this.#collider;
+        const focusTarget = this.#focusTarget;
+
+        cm.startCoroutine(function* handleContextMenuOpening() {
+            while (true) {
+                const {ctx} = yield waitUntil.rightMousePressed({
+                    collider,
+                    focusTarget
+                });
+
+                yield contextMenu.open(cm, ctx.mousePos);
+            }
+        });
     }
 }

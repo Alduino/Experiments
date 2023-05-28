@@ -1,6 +1,3 @@
-export const RAD2DEG = 180 / Math.PI;
-export const DEG2RAD = Math.PI / 180;
-
 export default class Vector2 {
     private _source: { x: number, y: number };
     #nav = false;
@@ -11,6 +8,10 @@ export default class Vector2 {
         }
 
         this._source = {x, y};
+    }
+
+    static get infinity() {
+        return new Vector2(Infinity, Infinity);
     }
 
     static get zero() {
@@ -27,7 +28,7 @@ export default class Vector2 {
 
     /**
      * A `Vector2` that isn't equal to anything, including itself.
-     * If you try to read it's value, an error is thrown.
+     * If you try to read its value, an error is thrown.
      * It's here to be used as a null value when you can't use null.
      */
     static get notAVector(): Vector2 {
@@ -43,11 +44,14 @@ export default class Vector2 {
     public get x() {
         this.#assertNotNav();
         if (!this._source) return undefined;
-        return this._source.x;
+        const {x} = this._source;
+        if (Number.isNaN(x)) throw new Error("x is NaN");
+        return x;
     }
 
     public set x(value: number) {
         this.#assertNotNav();
+        if (Number.isNaN(value)) throw new Error("Cannot set x to NaN");
         if (!this._source) this._source = {x: 0, y: 0};
         this._source.x = value;
     }
@@ -55,11 +59,14 @@ export default class Vector2 {
     public get y() {
         this.#assertNotNav();
         if (!this._source) return undefined;
-        return this._source.y;
+        const {y} = this._source;
+        if (Number.isNaN(y)) throw new Error("y is NaN");
+        return y;
     }
 
     public set y(value: number) {
         this.#assertNotNav();
+        if (Number.isNaN(value)) throw new Error("Cannot set y to NaN");
         if (!this._source) this._source = {x: 0, y: 0};
         this._source.y = value;
     }
@@ -145,7 +152,8 @@ export default class Vector2 {
         return this;
     }
 
-    add(to: Vector2) {
+    add(to: Vector2 | number) {
+        if (typeof to === "number") to = new Vector2(to, to);
         return new Vector2(this.x + to.x, this.y + to.y);
     }
 

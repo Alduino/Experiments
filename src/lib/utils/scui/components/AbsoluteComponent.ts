@@ -5,12 +5,28 @@ import {CanvasFrameContext} from "../../../canvas-setup";
 import SizeRequest from "../lib/SizeRequest";
 import iter from "itiriri";
 
+export interface AbsoluteComponentOptions {
+    /**
+     * Grow to the maximum size the parent allows, instead of the smallest size to contain the children.
+     * @default false
+     */
+    fillParent?: boolean;
+}
+
 export default class AbsoluteComponent extends Component {
+    #fillParent: boolean;
+
     #childrenPositions = this.createChildrenMetadata<Reference<Vector2>>(
         () => this.createLinkedReference(Vector2.notAVector, {
             checkEquality: Vector2.equal
         })
     );
+
+    constructor(options: AbsoluteComponentOptions = {}) {
+        super();
+
+        this.#fillParent = options.fillParent ?? false;
+    }
 
     setChildPosition(child: Component, position: Vector2) {
         const childIdentifier = this.getChildComponentIdentifier(child);
@@ -32,18 +48,20 @@ export default class AbsoluteComponent extends Component {
             return position.add(minSize);
         }).reduce(max, Vector2.zero);
 
-        const requestedSize = iter(children).map(child => {
-            const position = this.#childrenPositions.get(child).get();
-            const {minSize, requestedSize} = this.getChildSizeRequest(child);
-            return position.add(requestedSize ?? minSize);
-        }).reduce(max, Vector2.zero);
+        const requestedSize = this.#fillParent
+            ? Vector2.infinity
+            : iter(children).map(child => {
+                const position = this.#childrenPositions.get(child).get();
+                const {minSize, requestedSize} = this.getChildSizeRequest(child);
+                return position.add(requestedSize ?? minSize);
+            }).reduce(max, Vector2.zero);
 
         return {minSize, requestedSize};
     }
 
     protected getChildrenSizes(): ReadonlyMap<symbol, Vector2> {
         const children = this.getChildren();
-        const size = this.getSize();
+        const size = this.size;
 
         return iter(children).map<[symbol, Vector2]>(child => {
             const position = this.#childrenPositions.get(child).get();

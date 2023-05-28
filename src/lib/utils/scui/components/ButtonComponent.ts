@@ -126,9 +126,9 @@ export default class ButtonComponent extends Component {
     }
 
     protected render(ctx: CanvasFrameContext) {
-        clear(ctx, Vector2.zero, this.getSize());
+        clear(ctx, Vector2.zero, this.size);
 
-        roundedRectangle(ctx, Vector2.one, this.getSize().subtract(new Vector2(2, 2)), 3, {
+        roundedRectangle(ctx, Vector2.one, this.size.subtract(new Vector2(2, 2)), 3, {
             fill: fill[this.#pointerState.get()],
             thickness: 1,
             colour: "#aaa"
@@ -228,8 +228,8 @@ export default class ButtonComponent extends Component {
     }
 
     #updateCollider() {
-        if (this.getGlobalPosition().isNaV || this.getSize().isNaV) return;
-        const collider = new RectangleCollider(this.getGlobalPosition(), this.getGlobalPosition().add(this.getSize()));
+        if (this.getGlobalPosition().isNaV || this.size.isNaV) return;
+        const collider = new RectangleCollider(this.getGlobalPosition(), this.getGlobalPosition().add(this.size));
         this.#collider.set(collider);
     }
 }

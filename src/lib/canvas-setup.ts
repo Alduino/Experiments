@@ -3,6 +3,7 @@ import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgu
 import {getListenerAdder, MiniEventEmitter} from "./utils/MiniEventEmitter";
 import {deref, Dereffable, Getter} from "./utils/ref";
 import iter from "itiriri";
+import consoleMarkdown from "./utils/consoleMarkdown";
 
 type CanvasFrameRenderer = (ctx: InteractiveCanvasFrameContext) => void;
 
@@ -460,6 +461,11 @@ interface StartCoroutineAwait extends NormalCoroutineAwait<void> {
     // by whatever nested them.
     cancelRootCheck(): void;
 
+    /**
+     * Returns true if `cancelRootCheck` has been called.
+     */
+    isRootCheckCancelled(): boolean;
+
     // Used for nested coroutines, cancels this coroutine and forces its function to return.
     // Note that a coroutine can only be disposed where a `yield` is.
     dispose();
@@ -795,13 +801,37 @@ export const waitUntil = {
     /**
      * Waits until the right mouse button is pressed
      */
-    rightMousePressed(options: CommonAwaiterOptions = {}): CoroutineAwait<void> {
+    rightMousePressed(options: MousePressedOptions = {}): CoroutineAwait<void> {
+        const {collider: colliderRef, invertCollider, ...commonOptions} = options;
+
+        if (invertCollider && !colliderRef) {
+            throw new Error("`invertCollider` option requires `collider` to be set");
+        }
+
         return {
-            ...options,
+            ...commonOptions,
             identifier: "waitUntil.rightMousePressed",
             shouldContinue(ctx: InteractiveCanvasFrameContext, signal: AbortSignal) {
                 if (signal.aborted) return {state: "aborted"};
-                return {state: ctx.mousePressed.right};
+
+                if (!colliderRef) {
+                    return {state: ctx.mousePressed.right};
+                }
+
+                if (ctx.mousePressed.right) {
+                    const collider = deref(colliderRef);
+                    const distance = collider.getSignedDistance(ctx.mousePos);
+
+                    if (!invertCollider && distance <= 0) {
+                        return {state: true};
+                    } else if (invertCollider && distance > 0) {
+                        return {state: true};
+                    } else {
+                        return {state: false};
+                    }
+                } else {
+                    return {state: false};
+                }
             }
         };
     },
@@ -1014,7 +1044,7 @@ export const waitUntil = {
     }
 };
 
-interface StartCoroutineResult {
+export interface StartCoroutineResult {
     awaiter: CoroutineAwait<void>;
     abortController: AbortController;
 
@@ -1319,7 +1349,12 @@ class CoroutineManagerImpl implements CoroutineManager {
         const awaiter: StartCoroutineAwait = {
             identifier,
             shouldContinue(ctx) {
-                that.handleCoroutine(ctx, state);
+                if (state.disposalStack) {
+                    // the coroutine has already been disposed - this shouldn't really happen but we will just ignore it
+                    isComplete = true;
+                } else {
+                    that.handleCoroutine(ctx, state);
+                }
 
                 return {
                     state: isComplete ? abortController.signal.aborted ? "aborted" : true : false
@@ -1327,6 +1362,9 @@ class CoroutineManagerImpl implements CoroutineManager {
             },
             cancelRootCheck() {
                 state.rootCheckDisabled = true;
+            },
+            isRootCheckCancelled() {
+                return state.rootCheckDisabled;
             },
             dispose() {
                 that.disposeCoroutine(state);
@@ -1376,7 +1414,7 @@ class CoroutineManagerImpl implements CoroutineManager {
 
     private disposeCoroutine(state: StatefulCoroutine) {
         if (!this._coroutines.has(state)) {
-            throw new Error("Attempted to dispose a coroutine that has already been disposed", {
+            throw new Error(`Attempted to dispose a coroutine that has already been disposed: \`${state.identifier}\``, {
                 cause: state.disposalStack
             });
         }
@@ -1392,6 +1430,10 @@ class CoroutineManagerImpl implements CoroutineManager {
     }
 
     private handleCoroutine(ctx: InteractiveCanvasFrameContext, state: StatefulCoroutine) {
+        if (state.disposalStack) {
+            throw new Error(`Handling disposed coroutine \`${state.identifier}\``);
+        }
+
         if (state.waitingForDelay) return;
 
         if (state.lastResult?.delay && state.lastResult.delay !== state.lastWaitingPromise) {
@@ -1448,6 +1490,17 @@ class CoroutineManagerImpl implements CoroutineManager {
                         res = state.coroutine.next({ctx, aborted, data});
                     }
 
+                    if (process.env.NODE_ENV !== "production" && isStartCoroutineResult(res.value)) {
+                        const awaiter = res.value.awaiter as StartCoroutineAwait;
+
+                        if (!awaiter.isRootCheckCancelled()) {
+                            console.warn(...consoleMarkdown(`
+                                Coroutine \`${state.identifier}\` nested the coroutine \`${awaiter.identifier}\` without using a proper nesting awaiter.
+                                Instead of yielding the result of \`cm.startCoroutine\`, yield the coroutine function directly.
+                            `));
+                        }
+                    }
+
                     value = res.value ? getAwaiter(this, res.value as AwaiterCastable) : undefined;
                 } finally {
                     if (state.lastResult) {
@@ -1486,7 +1539,9 @@ class CoroutineManagerImpl implements CoroutineManager {
 
             console.log("Coroutine errored:", state.identifier, state.traces);
 
-            this.disposeCoroutine(state);
+            if (!state.disposalStack) {
+                this.disposeCoroutine(state);
+            }
 
             throw err;
         }
@@ -1790,6 +1845,7 @@ export default class InteractiveCanvas implements Canvas {
             this._contextFactory.ctx.fillRect(30, this.size.y - 82, this._contextFactory.ctx.measureText(displayMessage).width + 20, 52);
 
             this._contextFactory.ctx.fillStyle = "white";
+            this._contextFactory.ctx.textBaseline = "top";
             this._contextFactory.ctx.fillText(displayMessage, 40, this.size.y - 72);
         }
     }

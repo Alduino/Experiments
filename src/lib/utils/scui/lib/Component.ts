@@ -72,6 +72,8 @@ export default abstract class Component {
     readonly #canvas = new OffscreenCanvas(Vector2.zero);
     readonly #children = new Association<Component, symbol>();
     readonly #childrenNeedingInitialisation = new Set<Component>();
+    readonly #emptyChildren = new Set<symbol>();
+
     #parent: ParentInterface;
     #initialised = false;
     #renderRequired = false;
@@ -121,6 +123,14 @@ export default abstract class Component {
         checkEquality: Vector2.equal
     });
 
+    readonly #opacity = this.#createLinkedReference(1, {
+        triggers: {
+            childPositions: false,
+            resize: false,
+            render: true
+        }
+    })
+
     constructor() {
         this.#renderRequestedEvent.listen(() => this.#renderRequired = true);
         this.#childResizedEvent.listen(() => this.#handleChildResized());
@@ -135,6 +145,19 @@ export default abstract class Component {
      */
     get size() {
         return this.#size.get();
+    }
+
+    /**
+     * A value between one (fully opaque) and zero (fully transparent).
+     * Lower values are harder to see and let through more of the background.
+     * The component will not render when the opacity is zero.
+     */
+    get opacity() {
+        return this.#opacity.get();
+    }
+
+    set opacity(value) {
+        this.#opacity.set(value);
     }
 
     /**
@@ -177,7 +200,7 @@ export default abstract class Component {
         return this.#initialisedEvent.getListener();
     }
 
-    protected get resizedEvent() {
+    get resizedEvent() {
         return this.#resizedEvent.getListener();
     }
 
@@ -235,7 +258,7 @@ export default abstract class Component {
 
         this.#childCount++;
 
-        const identifier = Symbol(`${child.#getFullDisplayName()} (#${this.#childCount})`);
+        const identifier = Symbol(`${this.#childCount}.${child.#getFullDisplayName()}`);
         this.#children.add(child, identifier);
 
         this.#childAddedEvent.emit(identifier);
@@ -249,6 +272,15 @@ export default abstract class Component {
 
     addChildren(...children: Component[]) {
         for (const child of children) this.addChild(child);
+    }
+
+    /**
+     * Forces a synchronous transform update.
+     * Usually you should not need to use this—it only exists as a quick solution.
+     * If you have to use it, there's a bug somewhere.
+     */
+    forceTransformUpdate() {
+        this.#updateTransform();
     }
 
     protected getChildren(): ReadonlySet<symbol> {
@@ -326,13 +358,6 @@ export default abstract class Component {
     }
 
     /**
-     * Gets the size of the component, as set by its parent.
-     */
-    protected getSize() {
-        return this.#size.get();
-    }
-
-    /**
      * Helper method to get the only child of this component. Throws if there is not exactly one child.
      */
     protected getOnlyChild() {
@@ -360,9 +385,19 @@ export default abstract class Component {
         const children = this.getChildren();
 
         for (const child of children) {
+            // rendering empty children throws an error
+            if (this.#emptyChildren.has(child)) continue;
+
             const position = this.getChildPosition(child);
             const imageSource = this.getChildImageSource(child);
-            copyFrom(imageSource, ctx, position);
+
+            try {
+                copyFrom(imageSource, ctx, position);
+            } catch (err) {
+                throw new Error(`Failed to render ${this.getPath() + "/" + child.description}`, {
+                    cause: err
+                });
+            }
         }
     }
 
@@ -413,7 +448,18 @@ export default abstract class Component {
         }
     }
 
-    #createLinkedReference<T>(initialValue: T, options?: Partial<InternalUpdateDependencyOptions<T>>): Reference<T> {
+    /**
+     * Returns the name of this component and its ancestors, separated by slashes.
+     * @example ~/1.Absolute/3.Padding/1.Flex/2.Text
+     */
+    protected getPath() {
+        const thisName = this.#parent.getChildName(this);
+        const parentPath = this.#parent.getPath();
+
+        return `${parentPath}/${thisName}`;
+    }
+
+    #createLinkedReference<T>(initialValue: T, options?: Partial<InternalUpdateDependencyOptions<T>>): LinkedReference<T> {
         return this.createLinkedReference(initialValue, options);
     }
 
@@ -438,7 +484,7 @@ export default abstract class Component {
         this.#initialisedEvent.emit();
     }
 
-    #doRendering() {
+    #runRender() {
         const context = this.#canvas.getContext();
         this.render(context);
         context.disposeListeners.forEach(fn => fn());
@@ -497,6 +543,7 @@ export default abstract class Component {
 
     #updateTransform() {
         this.#canvas.setSizeAndClear(this.#size.get());
+        this.#emptyChildren.clear();
 
         const children = this.getChildren();
         if (children.size > 0) {
@@ -506,12 +553,18 @@ export default abstract class Component {
                 const size = childSizes.get(identifier);
                 if (!size) throw new Error(`Missing size for child ${identifier.description}`);
 
+                if (size.equal(Vector2.zero)) {
+                    this.#emptyChildren.add(identifier);
+                }
+
                 const child = this.#children.getFromB(identifier);
                 child.#size.set(size);
             }
         }
 
-        this.#doRendering();
+        if (!this.#canSkipRender()) {
+            this.#runRender();
+        }
     }
 
     #getImageSource(): CanvasImageSource {
@@ -522,11 +575,21 @@ export default abstract class Component {
         child.#init({
             getBatch: this.#getBatch.bind(this),
             updateChildSizeRequest: this.#updateChildSizeRequest.bind(this),
-            getChildName: this.#getChildName.bind(this)
+            getChildName: this.#getChildName.bind(this),
+            getPath: this.getPath.bind(this)
         });
     }
 
+    /**
+     * Rendering can safely be skipped when invisible.
+     */
+    #canSkipRender() {
+        return this.opacity <= 0;
+    }
+
     #renderTree() {
+        if (this.#canSkipRender()) return;
+
         for (const child of this.#children.aValues()) {
             child.#renderTree();
             this.#renderRequired ||= child.#renderRequired;
@@ -534,7 +597,7 @@ export default abstract class Component {
         }
 
         if (this.#renderRequired) {
-            this.#doRendering();
+            this.#runRender();
         }
     }
 
@@ -571,7 +634,7 @@ export default abstract class Component {
 
     #getFullDisplayName() {
         const componentName = this.getComponentName();
-        if (this.displayName) return `${componentName} - ${this.displayName}`;
+        if (this.displayName) return `${componentName}[${this.displayName}]`;
         else return componentName;
     }
 }

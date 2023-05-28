@@ -51,7 +51,7 @@ export default class TextComponent extends Component {
     }
 
     protected render(ctx: CanvasFrameContext) {
-        clear(ctx, Vector2.zero, this.getSize());
+        clear(ctx, Vector2.zero, this.size);
 
         text(ctx, Vector2.zero, this.text, {
             font: this.font,

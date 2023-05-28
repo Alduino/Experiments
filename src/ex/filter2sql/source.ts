@@ -20,7 +20,7 @@ import TextComponent from "../../lib/utils/scui/components/TextComponent";
     const absolutePositioner = new AbsoluteComponent();
     rootComponent.setChild(absolutePositioner);
 
-    const textboxComponent = new TextBoxComponent(canvas);
+    const textboxComponent = new TextBoxComponent(canvas, absolutePositioner);
     absolutePositioner.addChild(textboxComponent);
     absolutePositioner.setChildPosition(textboxComponent, new Vector2(200, 200));
 
@@ -43,7 +43,7 @@ import TextComponent from "../../lib/utils/scui/components/TextComponent";
         const rootComponentImageSource = rootComponent.getImageSource();
         copyFrom(rootComponentImageSource, ctx);
 
-        if (cm.isFocusGlobal() && ctx.keyDown.get("d")) {
+        if (cm.isFocusGlobal() && ctx.keyDown.get("KeyD")) {
             if (!popInspectCursor) {
                 popInspectCursor = canvas.pushCursor("crosshair");
             }
@@ -64,6 +64,7 @@ import TextComponent from "../../lib/utils/scui/components/TextComponent";
     canvas.preventKeyDefault("Tab", true);
     canvas.preventKeyDefault("/", true);
     canvas.preventKeyDefault("'", true);
+    canvas.setDefaultPrevented("contextmenu", true);
 
     cm.startCoroutine(function* testKeyboard() {
         while (true) {

@@ -91,7 +91,7 @@ export default class FlexComponent extends Component {
 
     protected getChildrenSizes(): ReadonlyMap<symbol, Vector2> {
         const children = this.getChildren();
-        const thisSize = this.getSize();
+        const thisSize = this.size;
         const directedSize = this.#getDirectedValue(thisSize);
         const crossSize = this.#getDirectedValue(thisSize, true);
         const gap = this.gap;
@@ -123,7 +123,7 @@ export default class FlexComponent extends Component {
                 const size = this.getChildSizeRequest(child);
                 return [child, size.requestedSize ?? size.minSize] as const;
             })
-            .toMap(([key]) => key, ([, value]) => value);
+            .toMap(element => element[0], ([, value]) => value);
 
         if (shrinkTotal > 0 && usedSpace > directedSize) {
             const oneShrinkAmount = (usedSpace - directedSize) / shrinkTotal;
@@ -170,7 +170,7 @@ export default class FlexComponent extends Component {
         for (const [child, size] of eachItemSize) {
             const childCrossAlignment = this.#childrenMetadata.get(child).crossAlign.get() ?? crossAlignment;
             const mainAxisPositionVector = this.#getDirectedVector(position);
-            const thisCrossAxisSize = this.#getDirectedValue(this.getSize(), true);
+            const thisCrossAxisSize = this.#getDirectedValue(this.size, true);
             const childCrossAxisSize = this.#getDirectedValue(size, true);
             const crossAxisPositionVector = this.#getDirectedVector(this.#getAligned(thisCrossAxisSize, childCrossAxisSize, childCrossAlignment), true);
             const childPosition = mainAxisPositionVector.add(crossAxisPositionVector);

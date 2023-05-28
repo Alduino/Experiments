@@ -5,7 +5,8 @@ import {rect} from "../../../imgui";
 import SizeRequest from "../lib/SizeRequest";
 
 export default class RectangleComponent extends Component {
-    #size = this.createLinkedReference(new Vector2(16, 16));
+    #minSize = this.createLinkedReference(new Vector2(16, 16));
+    #requestedSize = this.createLinkedReference(new Vector2(Infinity, Infinity))
 
     #fill = this.createLinkedReference("black", {
         triggers: {
@@ -15,12 +16,36 @@ export default class RectangleComponent extends Component {
         }
     });
 
-    get size() {
-        return this.#size.get();
+    #borderWidth = this.createLinkedReference(0, {
+        triggers: {
+            resize: false,
+            childPositions: false,
+            render: true
+        }
+    });
+
+    #borderColour = this.createLinkedReference("black", {
+        triggers: {
+            resize: false,
+            childPositions: false,
+            render: true
+        }
+    });
+
+    get minSize() {
+        return this.#minSize.get();
     }
 
-    set size(value) {
-        this.#size.set(value);
+    set minSize(value) {
+        this.#minSize.set(value);
+    }
+
+    get requestedSize() {
+        return this.#requestedSize.get();
+    }
+
+    set requestedSize(value) {
+        this.#requestedSize.set(value);
     }
 
     get fill() {
@@ -31,20 +56,36 @@ export default class RectangleComponent extends Component {
         this.#fill.set(value);
     }
 
+    get borderWidth() {
+        return this.#borderWidth.get();
+    }
+
+    set borderWidth(value) {
+        this.#borderWidth.set(value);
+    }
+
+    get borderColour() {
+        return this.#borderColour.get();
+    }
+
+    set borderColour(value) {
+        this.#borderColour.set(value);
+    }
+
     protected getChildLimit(): number {
         return 0;
     }
 
     protected render(ctx: CanvasFrameContext) {
-        rect(ctx, Vector2.zero, this.getSize(), {
+        rect(ctx, Vector2.zero, this.size, {
             fill: this.fill
         });
     }
 
     protected getSizeRequest(ctx: CanvasFrameContext): SizeRequest {
         return {
-            minSize: Vector2.one,
-            requestedSize: this.size
+            minSize: this.minSize,
+            requestedSize: this.requestedSize.isNaV ? undefined : this.requestedSize
         };
     }
 }
