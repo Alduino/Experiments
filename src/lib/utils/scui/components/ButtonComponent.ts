@@ -1,8 +1,6 @@
 import Component from "../lib/Component";
 import InteractiveCanvas, {
-    CanvasFrameContext,
-    CoroutineManager,
-    FocusTarget,
+    CanvasFrameContext, InteractiveCanvasFrameContext,
     RectangleCollider,
     waitUntil
 } from "../../../canvas-setup";
@@ -12,6 +10,7 @@ import SizeRequest from "../lib/SizeRequest";
 import {ref} from "../../ref";
 import SingleEventEmitter from "../../SingleEventEmitter";
 import TextComponent from "./TextComponent";
+import {CoroutineManager, FocusTarget} from "../../../coroutines";
 
 const enum PointerState {
     out,
@@ -41,7 +40,7 @@ export default class ButtonComponent extends Component {
     });
 
     readonly #canvas: InteractiveCanvas;
-    readonly #coroutineManager: CoroutineManager;
+    readonly #coroutineManager: CoroutineManager<InteractiveCanvasFrameContext>;
     readonly #focusTarget: FocusTarget;
 
     readonly #collider = ref(new RectangleCollider(Vector2.zero, Vector2.zero));
@@ -52,7 +51,7 @@ export default class ButtonComponent extends Component {
         super();
         this.#canvas = canvas;
         this.#coroutineManager = canvas.getCoroutineManager();
-        this.#focusTarget = this.#coroutineManager.createFocusTarget();
+        this.#focusTarget = this.#coroutineManager.getFocusTargetManager().createFocusTarget();
 
         this.initialisedEvent.listen(() => this.#handleInitialised());
         this.globalPositionUpdatedEvent.listen(() => this.#updateCollider());

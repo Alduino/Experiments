@@ -2,11 +2,7 @@ import Component from "../lib/Component";
 import InteractiveCanvas, {
     CanvasFrameContext,
     Collider,
-    CommonAwaiterOptions,
-    CoroutineAwait,
-    CoroutineGeneratorFunction,
-    CoroutineManager,
-    FocusTarget,
+    InteractiveCanvasFrameContext,
     RectangleCollider,
     waitUntil
 } from "../../../canvas-setup";
@@ -20,6 +16,13 @@ import {Font, Glyph, GlyphRun} from "fontkit";
 import {getDefaultFont} from "../../font";
 import iter from "itiriri";
 import createContextMenu, {CreateContextMenuResult} from "../utils/createContextMenu";
+import {
+    CommonAwaiterOptions,
+    CoroutineAwait,
+    CoroutineGeneratorFunction,
+    CoroutineManager,
+    FocusTarget
+} from "../../../coroutines";
 
 const WORD_BOUNDARY_REGEX = /\b(?=\S+)/g;
 
@@ -66,7 +69,7 @@ interface KeyPressedRepeatingOptions extends CommonAwaiterOptions {
     keyBlocklist?: readonly string[];
 }
 
-function createKeyPressedRepeating(abortedRef: Setter<boolean>, keyRef: Reference<string | undefined>, options: KeyPressedRepeatingOptions = {}): CoroutineGeneratorFunction {
+function createKeyPressedRepeating(abortedRef: Setter<boolean>, keyRef: Reference<string | undefined>, options: KeyPressedRepeatingOptions = {}): CoroutineGeneratorFunction<InteractiveCanvasFrameContext> {
     const {
         repeatDelay = 300,
         repeatInterval = 30,
@@ -76,7 +79,7 @@ function createKeyPressedRepeating(abortedRef: Setter<boolean>, keyRef: Referenc
 
     let state: KeyPressedRepeatingState = KeyPressedRepeatingState.waiting;
 
-    function nextOrCancel(waiter: CoroutineAwait<void>, nextState: KeyPressedRepeatingState): CoroutineGeneratorFunction {
+    function nextOrCancel(waiter: CoroutineAwait<InteractiveCanvasFrameContext, void>, nextState: KeyPressedRepeatingState): CoroutineGeneratorFunction<InteractiveCanvasFrameContext> {
         return function* handleNextOrCancel() {
             const testKey = keyRef.get() ?? "NONE";
 
@@ -595,7 +598,7 @@ class TextBoxEditorComponent extends Component {
     readonly #caretComponent: CaretComponent;
     readonly #selectionBlockComponent: SelectionBlockComponent;
     readonly #canvas: InteractiveCanvas;
-    readonly #coroutineManager: CoroutineManager;
+    readonly #coroutineManager: CoroutineManager<InteractiveCanvasFrameContext>;
     readonly #focusTarget: FocusTarget;
 
     #controlModifierActive = false;
@@ -1182,7 +1185,10 @@ export default class TextBoxComponent extends Component {
         super();
         this.#canvas = canvas;
 
-        this.#focusTarget = canvas.getCoroutineManager().createFocusTarget({require: true, displayName: "TextBox"});
+        this.#focusTarget = canvas.getCoroutineManager().getFocusTargetManager().createFocusTarget({
+            require: true,
+            displayName: "TextBox"
+        });
 
         this.#contextMenu = this.#createContextMenu();
 

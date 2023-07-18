@@ -1,4 +1,4 @@
-import InteractiveCanvas, {CoroutineGenerator, CoroutineGeneratorFunction, waitUntil} from "../../lib/canvas-setup";
+import InteractiveCanvas, {InteractiveCanvasFrameContext, waitUntil} from "../../lib/canvas-setup";
 import {AnyDataStoreKey, dataStore, DataStoreKey} from "./lib/DataStore";
 import {clear, copyFrom, line, quadraticCurve} from "../../lib/imgui";
 import {LaneSegment} from "./lib/LaneSegment";
@@ -12,6 +12,7 @@ import Vector2 from "../../lib/Vector2";
 import {drawScuiInspector} from "../../lib/utils/scui/lib/debugger";
 import {JobScheduler} from "../../lib/utils/JobScheduler";
 import iter from "itiriri";
+import {CoroutineGenerator, CoroutineGeneratorFunction} from "../../lib/coroutines";
 
 enum InteractionMode {
     add,
@@ -228,8 +229,8 @@ function startSnapping(): () => AnyDataStoreKey | null {
     };
 }
 
-function buildSegment(startConnectionId: DataStoreKey<"laneSegConn">, isNewStartConnection: boolean): CoroutineGeneratorFunction {
-    return function* handleSegmentBuilding(): CoroutineGenerator {
+function buildSegment(startConnectionId: DataStoreKey<"laneSegConn">, isNewStartConnection: boolean): CoroutineGeneratorFunction<InteractiveCanvasFrameContext> {
+    return function* handleSegmentBuilding(): CoroutineGenerator<InteractiveCanvasFrameContext> {
         const {stop: stopDisplayingWorkingLine} = cm.startCoroutine(function* displayWorkingLine() {
             while (true) {
                 const {ctx} = yield waitUntil.nextFrame();
@@ -272,7 +273,7 @@ function buildSegment(startConnectionId: DataStoreKey<"laneSegConn">, isNewStart
 }
 
 cm.startCoroutine(function* init() {
-    const focusTarget = cm.createFocusTarget();
+    const focusTarget = cm.getFocusTargetManager().createFocusTarget();
 
     while (true) {
         focusTarget.blur();

@@ -287,6 +287,17 @@ export function translate(ctx: CanvasFrameContext, translation: Vector2, draw: (
     ctx.renderer.restore();
 }
 
+export function rotate(ctx: CanvasFrameContext, rotation: number, draw: () => void) {
+    if (rotation === 0) {
+        return draw();
+    }
+
+    ctx.renderer.save();
+    ctx.renderer.rotate(rotation);
+    draw();
+    ctx.renderer.restore();
+}
+
 export function draw(ctx: CanvasFrameContext, opts: RenderOptions) {
     assertInPath(getImguiContext(ctx), false);
     drawPath(ctx, opts);

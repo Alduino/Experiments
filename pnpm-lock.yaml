@@ -15,6 +15,7 @@ specifiers:
   open-simplex-noise: ^2.2.0
   quick-lru: ^6.1.1
   sass: ^1.34.0
+  tiny-invariant: ^1.3.1
   typescript: ^5.0.4
   uuid: ^8.3.2
   vite: ^3.1.3
@@ -29,6 +30,7 @@ dependencies:
   itiriri: 2.0.1
   open-simplex-noise: 2.5.0
   quick-lru: 6.1.1
+  tiny-invariant: 1.3.1
   uuid: 8.3.2
 
 devDependencies:
@@ -548,6 +550,10 @@ packages:
 
   /tiny-inflate/1.0.3:
     resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
+    dev: false
+
+  /tiny-invariant/1.3.1:
+    resolution: {integrity: sha512-AD5ih2NlSssTCwsMznbvwMZpJ1cbhkGd2uueNxzv2jDlEeZdU04JQfRnggJQ8DrcVBGjAsCKwFBbDlVNtEMlzw==}
     dev: false
 
   /to-regex-range/5.0.1:
