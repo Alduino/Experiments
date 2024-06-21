@@ -2,6 +2,7 @@
   "name": "@alduino/experiments",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "rm -rf dist && vite build && mv src/dist ."
@@ -12,7 +13,6 @@
   "alias": {
     "buffer": false
   },
-  "packageManager": "pnpm@7.1.5",
   "devDependencies": {
     "@types/bezier-js": "^4.1.0",
     "@types/fontkit": "^2.0.0",
@@ -20,9 +20,12 @@
     "@types/uuid": "^8.3.0",
     "sass": "^1.34.0",
     "typescript": "^5.0.4",
-    "vite": "^3.1.3"
+    "vite": "^5.0.6"
   },
   "dependencies": {
+    "@experiment-libs/experiment": "workspace:^",
+    "@experiments/citysim": "workspace:^",
+    "@experiments/games": "workspace:^",
     "@fontsource/inter": "^4.5.12",
     "@fontsource/montserrat": "^4.5.10",
     "bezier-js": "^6.1.0",

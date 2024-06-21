@@ -1,0 +1,21 @@
+{
+    "name": "@experiments/games",
+    "version": "0.0.0",
+    "type": "module",
+    "main": "./dist/index.js",
+    "scripts": {
+        "dev": "tsup --watch",
+        "build": "tsup"
+    },
+    "dependencies": {
+        "@alduino/coroutines": "^0.1.0",
+        "@experiment-libs/canvas": "workspace:^",
+        "@experiment-libs/experiment": "workspace:*",
+        "@experiment-libs/imui": "workspace:^",
+        "@experiment-libs/scui": "workspace:^",
+        "@experiment-libs/utils": "workspace:^"
+    },
+    "devDependencies": {
+        "tsup": "^8.0.1"
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "experiments",
+  "private": true,
+  "packageManager": "pnpm@8.12.0",
+  "scripts": {
+    "dev": "pnpm --recursive run dev"
+  }
+}

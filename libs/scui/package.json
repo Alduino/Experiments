@@ -1,0 +1,20 @@
+{
+    "name": "@experiment-libs/scui",
+    "version": "0.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch"
+    },
+    "dependencies": {
+        "@alduino/coroutines": "^0.1.0",
+        "@experiment-libs/canvas": "workspace:^",
+        "@experiment-libs/imui": "workspace:^",
+        "@experiment-libs/utils": "workspace:^",
+        "itiriri": "^2.0.1"
+    },
+    "devDependencies": {
+        "tsup": "^8.0.1"
+    }
+}

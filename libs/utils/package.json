@@ -1,0 +1,13 @@
+{
+    "name": "@experiment-libs/utils",
+    "version": "0.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch"
+    },
+    "devDependencies": {
+        "tsup": "^7.1.0"
+    }
+}
