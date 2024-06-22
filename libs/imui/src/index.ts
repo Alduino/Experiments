@@ -271,7 +271,7 @@ function isCanvasFrameContext(value: unknown): value is CanvasFrameContext {
 }
 
 export function copyFrom(source: CanvasFrameContext | CanvasImageSource, target: CanvasFrameContext, offset = Vector2.zero) {
-    const imageData = isCanvasFrameContext(source) ? source.renderer.canvas : source;
+    const imageData = (isCanvasFrameContext(source) ? source.renderer.canvas : source) as ImageBitmap;
 
     if (imageData.width === 0 && imageData.height === 0) {
         throw new Error("Cannot draw from an empty source");
@@ -384,7 +384,7 @@ interface Stop {
     colour: string;
 }
 
-const gradientCache: Map<CanvasRenderingContext2D, QuickLRU<string, CanvasGradient>> = new Map();
+const gradientCache: Map<OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, QuickLRU<string, CanvasGradient>> = new Map();
 
 function createGradientHash(type: string, start: Vector2, end: Vector2, stops: Stop[]) {
     return `${type}_${start}_${end}_${stops.map(stop => `${stop.time}_${stop.colour}`).join(",")}`;
