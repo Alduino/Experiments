@@ -1,10 +1,12 @@
 import {cleanupExperiment, listExperiments, setDataForExperiment} from "@experiment-libs/experiment/app";
 
+console.log("Downloading experiment entrypoints...");
 await Promise.all([
     import("@experiments/games"),
     // import("@experiments/citysim"),
     import("@experiments/raymarching")
 ].reverse().map(experiment => experiment.then(({default: register}) => register())));
+console.log("(Done)");
 
 const $experimentList = document.getElementById("experiment-list")!;
 const $frame = document.getElementById("frame")!;
@@ -42,6 +44,8 @@ function activate(id: string) {
 }
 
 for (const experiment of listExperiments()) {
+    console.log("Loaded experiment:", experiment);
+
     const $link = document.createElement("a");
     $link.href = `/#${experiment.id}`;
     $link.textContent = experiment.name;
