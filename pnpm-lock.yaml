@@ -19,6 +19,9 @@ importers:
       '@experiments/games':
         specifier: workspace:^
         version: link:../experiments/games
+      '@experiments/raymarching':
+        specifier: workspace:^
+        version: link:../experiments/raymarching
       '@fontsource/inter':
         specifier: ^4.5.12
         version: 4.5.12
@@ -124,6 +127,28 @@ importers:
       '@experiment-libs/experiment':
         specifier: workspace:*
         version: link:../../libs/experiment
+    devDependencies:
+      tsup:
+        specifier: ^8.0.1
+        version: 8.0.1
+
+  experiments/raymarching:
+    dependencies:
+      '@alduino/coroutines':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@experiment-libs/canvas':
+        specifier: workspace:^
+        version: link:../../libs/canvas
+      '@experiment-libs/experiment':
+        specifier: workspace:*
+        version: link:../../libs/experiment
+      '@experiment-libs/imui':
+        specifier: workspace:^
+        version: link:../../libs/imui
+      '@experiment-libs/utils':
+        specifier: workspace:^
+        version: link:../../libs/utils
     devDependencies:
       tsup:
         specifier: ^8.0.1

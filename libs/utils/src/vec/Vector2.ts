@@ -271,6 +271,10 @@ export class Vector2 {
         return `[${this.x.toFixed(dp)}, ${this.y.toFixed(dp)}]`;
     }
 
+    toArray(): readonly [x: number, y: number] {
+        return [this.x, this.y];
+    }
+
     clamp(min: Vector2, max: Vector2) {
         return new Vector2(
             Math.min(Math.max(this.x, min.x), max.x),

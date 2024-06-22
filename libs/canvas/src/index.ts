@@ -768,6 +768,7 @@ export class InteractiveCanvas implements Canvas {
         keyup: false
     };
     private _defaultKeysPrevented: KeyState = new KeyState();
+    // @ts-expect-error
     private readonly _coroutineController = new CoroutineController<InteractiveCanvasFrameContext>(id => this.coroutinePerformanceGraph.measure(id));
     private readonly _coroutineManager = this._coroutineController.getManager();
     private readonly cursorStack: CursorStackItem[] = [];

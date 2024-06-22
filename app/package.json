@@ -26,6 +26,7 @@
     "@experiment-libs/experiment": "workspace:^",
     "@experiments/citysim": "workspace:^",
     "@experiments/games": "workspace:^",
+    "@experiments/raymarching": "workspace:^",
     "@fontsource/inter": "^4.5.12",
     "@fontsource/montserrat": "^4.5.10",
     "bezier-js": "^6.1.0",

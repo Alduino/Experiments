@@ -2,7 +2,8 @@ import {cleanupExperiment, listExperiments, setDataForExperiment} from "@experim
 
 await Promise.all([
     import("@experiments/games"),
-    import("@experiments/citysim")
+    // import("@experiments/citysim"),
+    import("@experiments/raymarching")
 ].reverse().map(experiment => experiment.then(({default: register}) => register())));
 
 const $experimentList = document.getElementById("experiment-list")!;
