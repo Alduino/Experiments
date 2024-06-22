@@ -1,20 +1,24 @@
-import Vector2 from "./Vector2";
-import {measureText, textWithBackground, TextWithBackgroundOptions} from "./imgui";
-import {getListenerAdder, MiniEventEmitter} from "./utils/MiniEventEmitter";
-import {deref, Dereffable, Getter} from "./utils/ref";
+import {deref, Dereffable, Getter, SingleEventEmitter, Vector2} from "@experiment-libs/utils";
 import iter from "itiriri";
 import {
     AwaiterCastable,
     CommonAwaiterOptions,
     CoroutineAwait,
     CoroutineController,
-    CoroutineManager,
-    ExoticCoroutineAwait,
-    NestOptions, NextAwait,
+    CoroutineGenerator as GenericCoroutineGenerator,
+    CoroutineGeneratorFunction as GenericCoroutineGeneratorFunction,
+    CoroutineManager as GenericCoroutineManager,
+    NestOptions,
+    NextAwait,
     waitUntil as builtInWaitUntil
-} from "./coroutines";
+} from "@alduino/coroutines";
+import {PerformanceGraph} from "./PerformanceGraph";
 
 type CanvasFrameRenderer = (ctx: InteractiveCanvasFrameContext) => void;
+
+export type CoroutineGenerator = GenericCoroutineGenerator<InteractiveCanvasFrameContext>;
+export type CoroutineGeneratorFunction = GenericCoroutineGeneratorFunction<InteractiveCanvasFrameContext>;
+export type CoroutineManager = GenericCoroutineManager<InteractiveCanvasFrameContext>;
 
 class MouseState {
     readonly left: boolean;
@@ -112,7 +116,7 @@ export interface CanvasFrameContext {
     /**
      * The low-level rendering class
      */
-    renderer: CanvasRenderingContext2D;
+    renderer: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
     /**
      * The size in pixels of the canvas
@@ -452,14 +456,14 @@ export const waitUntil = {
      * - If two complete at the same time, will pick the first one passed
      * - If the passed signal is aborted, will return with data `-1`
      */
-    one(awaiters: AwaiterCastable<InteractiveCanvasFrameContext>[]): NextAwait {
+    oneCompletes(awaiters: AwaiterCastable<InteractiveCanvasFrameContext>[]): NextAwait {
         return builtInWaitUntil.one(awaiters);
     },
 
     /**
      * Waits until all awaiters are complete, or one aborts. No data is returned.
      */
-    all(awaiters: AwaiterCastable<InteractiveCanvasFrameContext>[]): NextAwait {
+    allComplete(awaiters: AwaiterCastable<InteractiveCanvasFrameContext>[]): NextAwait {
         return builtInWaitUntil.all(awaiters);
     },
 
@@ -686,7 +690,7 @@ export const waitUntil = {
     delay(ms: number, options: CommonAwaiterOptions = {}): CoroutineAwait<InteractiveCanvasFrameContext, void> {
         let done = false;
 
-        let timeout: NodeJS.Timeout;
+        let timeout: number;
 
         const delay = new Promise<void>(yay => {
             timeout = setTimeout(() => {
@@ -739,7 +743,7 @@ type InteractiveCanvasEvents = {
     resize: [Vector2];
 }
 
-export default class InteractiveCanvas implements Canvas {
+export class InteractiveCanvas implements Canvas {
     /**
      * The frame rate to target. Zero means the maximum possible.
      */
@@ -751,8 +755,6 @@ export default class InteractiveCanvas implements Canvas {
     pauseCoroutines = false;
 
     private readonly _canv: HTMLCanvasElement;
-    private readonly eventEmitter = new MiniEventEmitter<InteractiveCanvasEvents>();
-    public readonly addListener = getListenerAdder(this.eventEmitter);
     private _running: boolean = false;
     private _hadError = false;
     private _trigger: RenderTrigger = RenderTrigger.Always;
@@ -766,16 +768,21 @@ export default class InteractiveCanvas implements Canvas {
         keyup: false
     };
     private _defaultKeysPrevented: KeyState = new KeyState();
-    private readonly _coroutineController = new CoroutineController<InteractiveCanvasFrameContext>();
+    // @ts-expect-error
+    private readonly _coroutineController = new CoroutineController<InteractiveCanvasFrameContext>(id => this.coroutinePerformanceGraph.measure(id));
     private readonly _coroutineManager = this._coroutineController.getManager();
     private readonly cursorStack: CursorStackItem[] = [];
+    private readonly framePerformanceGraph = new PerformanceGraph();
+    private readonly coroutinePerformanceGraph = new PerformanceGraph();
     private cursorUpdateSchedule = 0;
     private usingManualCoroutineTiming = false;
     private coroutinesRunThisFrame = false;
     private currentFrameContext?: InteractiveCanvasFrameContext;
 
-    public constructor(id: string) {
-        this._canv = document.getElementById(id) as HTMLCanvasElement;
+    #resizeEvent = new SingleEventEmitter<[size: Vector2]>();
+
+    public constructor(element: HTMLCanvasElement) {
+        this._canv = element;
         this._contextFactory = new InteractiveCanvasFrameContextFactory(this._canv);
 
         window.addEventListener("resize", this.handleResize.bind(this));
@@ -795,13 +802,10 @@ export default class InteractiveCanvas implements Canvas {
                 if (this._defaultPrevented[ev]) event.preventDefault();
             });
         });
+    }
 
-        if (process.env.NODE_ENV !== "production") {
-            if (!this._canv.hasAttribute("tabindex")) {
-                console.error("Canvas must have a tab index when keyboard states are used\n\n" +
-                    "This message will only be shown in development builds.");
-            }
-        }
+    get resizeEvent() {
+        return this.#resizeEvent.getListener();
     }
 
     get size() {
@@ -831,12 +835,6 @@ export default class InteractiveCanvas implements Canvas {
         name: string,
         message: string
     }[]) {
-        const opts: TextWithBackgroundOptions = {
-            text: {font: "12px sans-serif", align: "left", fill: "white"},
-            background: {fill: "#0009"},
-            padding: new Vector2(4, 4)
-        };
-
         const isRight = corner.endsWith("r");
         const isBottom = corner.startsWith("b");
 
@@ -845,20 +843,33 @@ export default class InteractiveCanvas implements Canvas {
         let xPos = isRight ? ctx.screenSize.x - 5 : 5;
         const yPos = isBottom ? ctx.screenSize.y - offsetY - 20 : offsetY;
 
+        ctx.renderer.font = "12px sans-serif";
+        ctx.renderer.textBaseline = "top";
+        ctx.renderer.textAlign = "left";
+
         for (const {name, message} of items) {
             const text = `${name}: ${message}`;
-            const {
-                width: textWidth,
-                actualBoundingBoxAscent,
-                actualBoundingBoxDescent
-            } = measureText(ctx, text, opts.text);
+            const textMeasurement = ctx.renderer.measureText(text);
+            const textSize = new Vector2(textMeasurement.width, textMeasurement.actualBoundingBoxAscent + textMeasurement.actualBoundingBoxDescent);
 
-            maxHeight = Math.max(maxHeight, actualBoundingBoxAscent + actualBoundingBoxDescent);
+            maxHeight = Math.max(maxHeight, textSize.y);
 
-            if (isRight) xPos -= textWidth;
-            textWithBackground(ctx, new Vector2(xPos, yPos), text, opts);
+            if (isRight) xPos -= textSize.x;
 
-            if (!isRight) xPos += textWidth + 15;
+            ctx.renderer.fillStyle = "#0009";
+
+            if (ctx.renderer.roundRect) {
+                ctx.renderer.beginPath();
+                ctx.renderer.roundRect(xPos - 4, yPos - 4, textSize.x + 8, textSize.y + 8, 3);
+                ctx.renderer.fill();
+            } else {
+                ctx.renderer.fillRect(xPos - 4, yPos - 4, textSize.x + 8, textSize.y + 8);
+            }
+
+            ctx.renderer.fillStyle = "white";
+            ctx.renderer.fillText(text, xPos, yPos);
+
+            if (!isRight) xPos += textSize.x + 15;
             else xPos -= 15;
         }
 
@@ -903,13 +914,14 @@ export default class InteractiveCanvas implements Canvas {
         this._defaultKeysPrevented = this._defaultKeysPrevented.with(key, prevent, null);
     }
 
-    public getCoroutineManager(): CoroutineManager<InteractiveCanvasFrameContext> {
+    public getCoroutineManager(): CoroutineManager {
         return this._coroutineManager;
     }
 
     public drawDebug(ctx: InteractiveCanvasFrameContext) {
         this.drawCustomDebug(ctx, "tl", {
             FPS: `${ctx.fps.toFixed(1)} / ${(ctx.deltaTime * 1000).toFixed(1)}`,
+            _DT: ctx.deltaTime.toFixed(3),
             M: ctx.mousePos.toString(),
             D: ctx.disposeListeners.length.toFixed(0),
             _C: this._coroutineController.getCoroutineCount().toFixed(0),
@@ -920,6 +932,9 @@ export default class InteractiveCanvas implements Canvas {
                 ? "N/A"
                 : (this._coroutineController.getActiveFocusTargetIdentifier() || "Unnamed")
         });
+
+        this.framePerformanceGraph.render(this.ctx, Math.round(this.size.x / 3), Math.round(this.size.y / 4), Math.round(this.size.x - this.size.x / 3 - 10), Math.round(this.size.y - this.size.y / 4 - 10));
+        this.coroutinePerformanceGraph.render(this.ctx, Math.round(this.size.x / 3), Math.round(this.size.y / 4), 10, Math.round(this.size.y - this.size.y / 4 - 10));
     }
 
     public drawCustomDebug(ctx: CanvasFrameContext, corner: "tl" | "bl" | "tr" | "br", messages: Record<string, string>) {
@@ -1005,18 +1020,28 @@ export default class InteractiveCanvas implements Canvas {
             this._contextFactory.ctx.textBaseline = "top";
             this._contextFactory.ctx.fillText(displayMessage, 40, this.size.y - 72);
 
+            this.cursor = "default";
+
             return;
         }
 
         try {
+            this.framePerformanceGraph.measure("Context pre-frame");
             this._contextFactory.preFrame();
 
             const ctx = this._contextFactory.createContext();
             this.currentFrameContext = ctx;
-            if (!this.usingManualCoroutineTiming) this.handleCoroutines();
+
+            if (!this.usingManualCoroutineTiming) {
+                this.framePerformanceGraph.measure("Coroutines");
+                this.handleCoroutines();
+            }
+
+            this.framePerformanceGraph.measure("Frame callback");
             frame(ctx);
             ctx.disposeListeners.forEach(listener => listener());
 
+            this.framePerformanceGraph.measure("Cursor update");
             if (this.cursorUpdateSchedule === 1) {
                 this.updateCursorFromStack();
             }
@@ -1025,7 +1050,10 @@ export default class InteractiveCanvas implements Canvas {
                 this.cursorUpdateSchedule--;
             }
 
+            this.framePerformanceGraph.measure("Context post-frame");
             this._contextFactory.postFrame();
+
+            this.framePerformanceGraph.commit();
 
             if (!this.coroutinesRunThisFrame) throw new Error("The coroutine handler was not called in this frame");
             this.coroutinesRunThisFrame = false;
@@ -1064,7 +1092,7 @@ export default class InteractiveCanvas implements Canvas {
         this._canv.width = parentRect.width;
         this._canv.height = parentRect.height;
 
-        this.eventEmitter.emit("resize", this.size);
+        this.#resizeEvent.emit(this.size);
     }
 
     private handleTrigger(cause: RenderTrigger) {
@@ -1110,16 +1138,24 @@ export default class InteractiveCanvas implements Canvas {
         if (!this.currentFrameContext) throw new Error("The coroutine handler was called outside of the frame loop");
         if (this.coroutinesRunThisFrame) throw new Error("The coroutine handler was called twice in one frame");
         this.coroutinesRunThisFrame = true;
-        if (!this.pauseCoroutines) this._coroutineController.tick(this.currentFrameContext);
+
+        if (!this.pauseCoroutines) {
+            this.coroutinePerformanceGraph.measure("(tick)");
+            this._coroutineController.tick(this.currentFrameContext);
+            this.coroutinePerformanceGraph.commit();
+        }
     }
 }
 
+const DomOffscreenCanvas = window.OffscreenCanvas;
+
 export class OffscreenCanvas implements Canvas {
-    private readonly canvas = document.createElement("canvas");
-    private readonly ctx = this.canvas.getContext("2d");
+    private readonly canvas: globalThis.OffscreenCanvas;
+    private readonly ctx: OffscreenCanvasRenderingContext2D;
 
     constructor(size: Vector2) {
-        this.setSizeAndClear(size);
+        this.canvas = new DomOffscreenCanvas(size.x, size.y);
+        this.ctx = this.canvas.getContext("2d");
     }
 
     get size() {
@@ -1127,7 +1163,10 @@ export class OffscreenCanvas implements Canvas {
     }
 
     saveToBlob(type?: string, quality?: number) {
-        return new Promise<Blob>(yay => this.canvas.toBlob(yay, type, quality));
+        return this.canvas.convertToBlob({
+            type,
+            quality
+        })
     }
 
     setSizeAndClear(newSize: Vector2) {
@@ -1146,4 +1185,11 @@ export class OffscreenCanvas implements Canvas {
     getCanvasElement() {
         return this.canvas;
     }
+}
+
+/**
+ * Type helper for when the `ctx` result in a coroutine is `any`.
+ */
+export function getContext(ctx: InteractiveCanvasFrameContext): InteractiveCanvasFrameContext {
+    return ctx;
 }

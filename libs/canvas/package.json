@@ -1,0 +1,17 @@
+{
+    "name": "@experiment-libs/canvas",
+    "version": "0.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsup"
+    },
+    "dependencies": {
+        "@alduino/coroutines": "^0.1.0",
+        "@experiment-libs/utils": "workspace:^",
+        "itiriri": "^2.0.1"
+    },
+    "devDependencies": {
+        "tsup": "^8.0.1"
+    }
+}

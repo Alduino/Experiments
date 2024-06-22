@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "es2022",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "sourceMap": true,
+    "lib": ["dom", "esnext"],
+    "esModuleInterop": true,
+    "downlevelIteration": true,
+    "isolatedModules": true
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
